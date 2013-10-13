@@ -2,6 +2,12 @@
   (:import (solver.variables VF)
            (solver.exception SolverException)))
 
+(defn- namey?
+  [x]
+  (try (boolean (name x))
+    (catch Exception e
+      false)))
+
 (defn solver
   [name]
   (solver.Solver. name))
@@ -20,15 +26,16 @@
 
 (defn int-var
   "Creates an integer variable with the desired starting domain.
-Omit the \"name\" field for an auto-generated name.
+Variables with names starting with an underscore (\"_\") will be ommitted from solution maps.
+Omitting the \"name\" field will result in an auto-generated name beginning with an underscore.
 \"var-type\" is either :enumerated or :bounded (:enumerated by default).
 An enumerated var explicitly stores all of the values in a Bit Set.
 A bounded var only stores the min and max of the domain interval."
   [& args]
-  (let [[name? args] (if (string? (first args))
+  (let [[name? args] (if (namey? (first args))
                        [(first args) (rest args)]
                        [nil args])
-        name (if name? name? (gensym "intvar"))
+        name (name (if name? name? (gensym "_intvar")))  ; beware the funky usage of "name"
         [domain-expr args] (if (number? (first args))
                              [{:min (first args) :max (second args)} (rest (rest args))]
                              [(first args) (rest args)])
@@ -43,11 +50,9 @@ A bounded var only stores the min and max of the domain interval."
       [:bounded true] (throw (Exception. "Bounded int-vars only take a min and a max")))))
 
 (defn const-var
-  "Takes a number, and creates an object that behaves like an int-var but is in fact a constant number.
+  "Takes a number, and creates an object that behaves like an int-var but is in fact a constant number. The variable will not be included in a solution map.
 
-Useful when using constraints that require a variable instead of a constant.
-
-NOTE: the \"variable\" returned from this function will not be shown in a solution map."
+Useful when using constraints that require a variable instead of a constant."
   ([n]
     (VF/fixed n (get-current-solver)))
   ([name n]
@@ -59,10 +64,10 @@ NOTE: the \"variable\" returned from this function will not be shown in a soluti
 (defn bool-var
   "An int-var with a domain of [0;1]."
   [& args]
-  (let [[name? args] (if (string? (first args))
+  (let [[name? args] (if (namey? (first args))
                        [(first args) (rest args)]
                        [nil args])
-        name (if name? name? (gensym "intvar"))]
+        name (name (if name? name? (gensym "boolvar")))]  ; beware the funky usage of "name"
     (VF/bool name (get-current-solver))))
 
 (alter-meta! #'bool-var assoc :arglists '([name?]))
@@ -74,8 +79,10 @@ NOTE: the \"variable\" returned from this function will not be shown in a soluti
 (defn- solution-map
   [solver n]
   (into {:solution n}
-        (for [v (.getVars solver)]
-          [(.getName v) (.getValue v)])))
+        (for [v (.getVars solver)
+              :let [n (.getName v)]
+              :when (not= (first n) \_)]
+          [n (.getValue v)])))
 
 (defn- lazy-solutions
   ([solver]
@@ -90,6 +97,8 @@ NOTE: the \"variable\" returned from this function will not be shown in a soluti
       ())))
 
 (defn constrain!
+  "Enforces a constraint to be true when it comes time to solve the variables.
+Note that newly created constraints aren't actually being enforced until you call this function."
   [constraint]
   (.post (get-current-solver)
     constraint))
