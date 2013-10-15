@@ -6,7 +6,22 @@
                                Constraint)
            (solver.variables IntVar
                              BoolVar
-                             VF)))
+                             VF)
+           solver.constraints.nary.automata.FA.FiniteAutomaton))
+
+(defn- domain-min
+  [x]
+  (if (number? x)
+    x
+    (.getLB x)))
+
+(defn- domain-max
+  [x]
+  (if (number? x)
+    x
+    (.getUB x)))
+
+;;;;; ARITHMETIC
 
 (defn arithm
   "Takes an arithmetic equation consisting of 2 or 3 variables with infix operators in between.
@@ -65,8 +80,8 @@ As in $+, you can pass in one var and one number and get an int-view."
   (if (empty? vars)
     neutral
     (let [v (first vars)
-          lo (if (number? v) v (.getLB (first vars)))
-          hi (if (number? v) v (.getUB (first vars)))]
+          lo (domain-min v)
+          hi (domain-max v)]
       (concat (op lo (keypoints (rest vars) op neutral))
               (op hi (keypoints (rest vars) op neutral))))))
 
@@ -85,18 +100,79 @@ Or, pass in a var and a number (the number is greater than or equal to -1) and g
 
 (alter-meta! #'$* assoc :arglists '([x const] [const x] [x y]))
 
+(defn $min
+  "Returns a new int-var constrained to equal the minimum of the supplied int-vars."
+  [& args]
+  (let [mins (map domain-min args)
+        maxes (map domain-max args)
+        final-min (apply min mins)
+        final-max (apply min maxes)
+        new-var (core/int-var final-min final-max)]
+    (core/constrain!
+      (if (= (count args) 2)
+        (ICF/minimum new-var (first args) (second args))
+        (ICF/minimum new-var (into-array IntVar args))))
+    new-var))
+
+(defn $max
+  "Returns a new int-var constrained to equal the maximum of the supplied int-vars."
+  [& args]
+  (let [mins (map domain-min args)
+        maxes (map domain-max args)
+        final-min (apply max mins)
+        final-max (apply max maxes)
+        new-var (core/int-var final-min final-max)]
+    (core/constrain!
+      (if (= (count args) 2)
+        (ICF/maximum new-var (first args) (second args))
+        (ICF/maximum new-var (into-array IntVar args))))))
+
+(defn $mod
+  "Given int-vars X and Y, returns a new int-var Z constrained to equal X mod Y."
+  [X Y]
+  (let [Ymax (domain-max Y)
+        Z (core/int-var 0 (max (dec Ymax) 0))]
+    (core/constrain! (ICF/mod X Y Z))
+    Z))
+
+(defn $scalar
+  "Given a list of variables X, Y, Z, etc. and a list of number coefficients a, b, c, etc. returns a new variable constrained to equal aX + bY + cZ ..."
+  [variables coefficients]
+  (let [minmaxes (for [[v c] (map vector variables coefficients)
+                       :let [dmin (* (domain-min v) c)
+                             dmax (* (domain-max v) c)]]
+                   (if (< dmin dmax)
+                     [dmin dmax]
+                     [dmax dmin]))
+        final-min (apply min (map first minmaxes))
+        final-max (apply max (map second minmaxes))
+        new-var (core/int-var final-min final-max)]
+    (core/constrain! (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))))
+
+;;;;; LOGIC
+
+(defn $true
+  "The resulting constraint is always true. Sometimes useful as a dummy constraint inside logic constraints."
+  []
+  (ICF/TRUE (core/get-current-solver)))
+
+(defn $false
+  "The resulting constraint is always false. Sometimes useful as a dummy constraint inside logic constraints."
+  []
+  (ICF/FALSE (core/get-current-solver)))
+
 (defn $and
   "An \"and\" statement (i.e. \"P^Q^...\"); this statement is true if and only if every subconstraint is true."
   [& constraints]
   (if (empty? constraints)
-    (.TRUE (core/get-current-solver))
+    ($true)
     (LCF/and (into-array Constraint constraints))))
 
 (defn $or
   "An \"or\" statement (i.e. \"PvQv...\"); this statement is true if and only if at least one subconstraint is true."
   [& constraints]
   (if (empty? constraints)
-    (.FALSE (core/get-current-solver))
+    ($false)
     (LCF/or (into-array Constraint constraints))))
 
 (defn $not
@@ -113,14 +189,65 @@ An optional \"else\" field can be specified, which must be true if P is false."
   ([if-this then-this else-this]
     (LCF/ifThenElse if-this then-this else-this)))
 
+(defn $cond
+  "A convenience function for constructing a \"cond\"-like statement out of $if statements.
+The final \"else\" can be specified by itself (being the odd argument) or with the :else keyword.
+
+Example:
+($cond P Q, R S, :else T)
+=> ($if P Q ($if R S T))
+
+If no \"else\" clause is specified, it is \"True\" by default."
+  [& clauses]
+  (cond
+    (empty? clauses) ($true)
+    (empty? (rest clauses)) (first clauses)
+    (empty? (rest (rest clauses))) (if (= (first clauses) :else)
+                                     (second clauses)
+                                     (apply $if clauses))
+    :else ($if (first clauses) (second clauses) (apply $cond (rest (rest clauses))))))
+
 (defn $reify
   "Given a constraint C, returns a bool-var V such that (V = 1) iff C."
   [C]
-  (let [V (core/bool-var (gensym "reify"))]
+  (let [V (core/bool-var (gensym "_reify"))]
     (core/constrain! (LCF/reification V C))
     V))
 
+;;;;; GLOBAL
+
 (defn $all-different
-  "Given an arbitrary amount of int-vars, ensures that all variables have different values, i.e. no two of them are equal."
+  "Given a bunch of int-vars, ensures that all of them have different values, i.e. no two of them are equal."
   [& vars]
   (ICF/alldifferent (into-array IntVar vars) "DEFAULT"))
+
+(defn $circuit
+  "Given a list of int-vars L, and an optional offset number (default 0), the elements of L define a circuit, where
+(L[i] = j + offset) means that j is the successor of i.
+Hint: make the offset 1 when using a 1-based list."
+  ([list-of-vars]
+    ($circuit list-of-vars 0))
+  ([list-of-vars offset]
+    (ICF/circuit (into-array IntVar list-of-vars) offset)))
+
+(defn $nth
+  "Given a list of int-vars L, an int-var i, and an optional offset number (default 0), returns a new int-var constrained to equal L[i], or L[i - offset]."
+  ([list-of-vars index-var]
+    ($nth list-of-vars index-var 0))
+  ([list-of-vars index-var offset]
+    (let [final-min (apply min (map domain-min list-of-vars))
+          final-max (apply max (map domain-max list-of-vars))
+          new-var (core/int-var final-min final-max)]
+      (core/constrain! (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
+      new-var)))
+
+(defn $automaton
+  "Returns a Finite Automaton based on a supplied regular expression, with characters as the non-terminals.
+Example of regexp: (1|2)(3*)(4|5)"
+  [regexp]
+  (FiniteAutomaton. regexp))
+
+(defn $satisfies-automaton
+  "Given a list of variables and an automaton (created with $automaton), constrains that the list of variables in succession results in a final state in the automaton."
+  [list-of-vars automaton]
+  (ICF/regular (into-array IntVar list-of-vars) automaton))
