@@ -12,17 +12,35 @@
   [name]
   (solver.Solver. name))
 
-(def ^:dynamic current-solver nil)
+(def ^:private ^:dynamic current-solver-binding nil)
+(def ^:private current-solver-atom (atom nil))
 
 (defmacro with-solver
+  "A way of setting the current solver, using bindings.
+Syntax:
+(with-solver <my-solver>
+  ...)
+Note that, because bindings are in play behind the scenes, you can separate solver-dependent function calls into different functions as long as they are eventually nested in the initial bind.
+See \"with-solver!\" for a more unsafe but convenient way to permanently set the solver binding without enclosing an expression."
   [solver & exprs]
-  `(binding [current-solver ~solver]
+  `(binding [current-solver-binding ~solver]
      ~@exprs))
 
+(defn with-solver!
+  "A mutable way of setting the current solver, using atoms. This is somewhat unwise when solving multiple CP problems, especially when nesting them.
+You can use this for convenience, if you're testing things out at the REPL and you'd like to type each constraint / var declaration line-by-line.
+Calling (with-solver! nil) effectively undoes the operation.
+A \"with-solver!\" call overrides a \"with-solver\" call if both are active.
+Syntax:
+(with-solver! <my-solver>)
+..."
+  [solver]
+  (reset! current-solver-atom solver))
+
 (defn get-current-solver []
-  (if current-solver
-    current-solver
-    (throw (Exception. "No \"solver\" binding found, try using with-solver"))))
+  (or @current-solver-atom
+      current-solver-binding
+      (throw (Exception. "No \"solver\" binding found, try using with-solver"))))
 
 (defn int-var
   "Creates an integer variable with the desired starting domain.
