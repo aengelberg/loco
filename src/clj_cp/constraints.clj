@@ -34,7 +34,7 @@ The first of two ops (if applicable) can be + or -."
   ([X op1 Y op2 const]
     (ICF/arithm X (name op1) Y (name op2) const)))
 
-(alter-meta! #'arithm update-in [:arglists] conj '[X op const])
+(alter-meta! #'$arithm update-in [:arglists] conj '[X op const])
 
 (defn- $+view
   [x const]
@@ -265,7 +265,7 @@ If no \"else\" clause is specified, it is \"True\" by default."
 (L[i] = j + offset) means that j is the successor of i.
 Hint: make the offset 1 when using a 1-based list."
   ([list-of-vars]
-    ($circuit list-of-vars 0))
+    ($circuit? list-of-vars 0))
   ([list-of-vars offset]
     (ICF/circuit (into-array IntVar list-of-vars) offset)))
 
