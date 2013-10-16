@@ -23,7 +23,7 @@
 
 ;;;;; ARITHMETIC
 
-(defn arithm
+(defn $arithm
   "Takes an arithmetic equation consisting of 2 or 3 variables with infix operators in between.
 In the arglists, X and Y represent variables, const is a number, and ops can be strings or keywords.
 In the case of 1 op, the op can be =, !=, <, >, <=, or >=.
@@ -149,6 +149,45 @@ Or, pass in a var and a number (the number is greater than or equal to -1) and g
         new-var (core/int-var final-min final-max)]
     (core/constrain! (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))))
 
+(declare $not $and)
+
+(defmacro ^:private defn-equality-constraint
+  [name docstring str]
+  `(defn ~name
+     ~docstring
+     ([X# Y#]
+       ($arithm X# ~str Y#))
+     ([X# Y# & more#]
+       (apply $and (map (partial apply ~name) (partition 2 1 (list* X# Y# more#)))))))
+
+(defn-equality-constraint $=
+  "Constrains that X = Y.
+Giving more than 2 inputs results in an $and statement with multiple $= statements."
+  "=")
+(defn-equality-constraint $<
+  "Constrains that X < Y.
+Giving more than 2 inputs results in an $and statement with multiple $< statements."
+  "<")
+(defn-equality-constraint $>
+  "Constrains that X > Y.
+Giving more than 2 inputs results in an $and statement with multiple $> statements."
+  ">")
+(defn-equality-constraint $<=
+  "Constrains that X <= Y.
+Giving more than 2 inputs results in an $and statement with multiple $<= statements."
+  "<=")
+(defn-equality-constraint $>=
+  "Constrains that X >= Y.
+Giving more than 2 inputs results in an $and statement with multiple $>= statements."
+  ">=")
+(defn $!=
+  "Constrains that X != Y.
+Giving more than 2 inputs (X, Y, Z, ...) results in NOT([X = Y] ^ [Y = Z] ^ ...)"
+  ([X Y]
+    ($arithm X "!=" Y))
+  ([X Y Z & more]
+    ($not (apply $= X Y Z more))))
+
 ;;;;; LOGIC
 
 (defn $true
@@ -216,12 +255,12 @@ If no \"else\" clause is specified, it is \"True\" by default."
 
 ;;;;; GLOBAL
 
-(defn $all-different
+(defn $all-different?
   "Given a bunch of int-vars, ensures that all of them have different values, i.e. no two of them are equal."
   [& vars]
   (ICF/alldifferent (into-array IntVar vars) "DEFAULT"))
 
-(defn $circuit
+(defn $circuit?
   "Given a list of int-vars L, and an optional offset number (default 0), the elements of L define a circuit, where
 (L[i] = j + offset) means that j is the successor of i.
 Hint: make the offset 1 when using a 1-based list."
@@ -243,11 +282,14 @@ Hint: make the offset 1 when using a 1-based list."
 
 (defn $automaton
   "Returns a Finite Automaton based on a supplied regular expression, with characters as the non-terminals.
-Example of regexp: (1|2)(3*)(4|5)"
+Example of regexp: (1|2)(3*)(4|5)
+Numbers (from 0 to 9) are treated as the numbers themselves; non-digit characters are converted to their unicode numbers.
+If you wanted to use the number 10 (which would normally be read as 1, 0), you'd have to type \\u000A (hexadecimal for 10).
+Be careful to not use spaces; they'll be treated as their ASCII value 32!"
   [regexp]
   (FiniteAutomaton. regexp))
 
-(defn $satisfies-automaton
+(defn $satisfies-automaton?
   "Given a list of variables and an automaton (created with $automaton), constrains that the list of variables in succession results in a final state in the automaton."
   [list-of-vars automaton]
   (ICF/regular (into-array IntVar list-of-vars) automaton))
