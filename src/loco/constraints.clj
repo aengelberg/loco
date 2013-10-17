@@ -1,5 +1,5 @@
-(ns clj-cp.constraints
-  (:require [clj-cp.core :as core])
+(ns loco.constraints
+  (:require [loco.core :as core])
   (:import (solver.constraints Arithmetic
                                ICF
                                LCF

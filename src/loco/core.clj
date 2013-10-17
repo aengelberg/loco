@@ -1,4 +1,4 @@
-(ns clj-cp.core
+(ns loco.core
   (:import (solver.variables VF)
            (solver.exception SolverException)))
 
@@ -98,12 +98,12 @@ Useful when using constraints that require a variable instead of a constant."
                                           [name? values var-type?]))
 
 (defn bool-var
-  "An int-var with a domain of [0;1]."
+  "An int-var with a domain of [0;1]. Optionally takes a name."
   [& args]
   (let [[name? args] (if (namey? (first args))
                        [(first args) (rest args)]
                        [nil args])
-        name (name (if name? name? (gensym "boolvar")))  ; beware the funky usage of "name"
+        name (name (if name? name? (gensym "_boolvar")))  ; beware the funky usage of "name"
         v (VF/bool name (get-current-solver))]
     (swap! (get-current-vars-atom) update-in [:bool] conj v)
     v))
