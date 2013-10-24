@@ -15,14 +15,14 @@
 (defrecord ^:private SolverState
   [solver n-solutions my-vars])
 
-(defn- new-solver-state
+(defn new-solver-state
   [solver]
   (->SolverState solver (atom 0) (atom {})))
 
 (def ^:private ^:dynamic current-solver-state-binding nil)
 (defonce ^:private current-solver-state-atom (atom nil))
 
-(defn- get-current-solver-state []
+(defn get-current-solver-state []
   (or @current-solver-state-atom
       current-solver-state-binding
       (throw (Exception. "No \"solver\" binding found, try using with-solver"))))
@@ -42,7 +42,8 @@ Syntax:
 (with-solver <my-solver>
   ...)
 Note that, because bindings are in play behind the scenes, you can separate solver-dependent function calls into different functions as long as they are eventually nested in the initial bind.
-See \"with-solver!\" for a more unsafe but convenient way to permanently set the solver binding without enclosing an expression."
+See \"with-solver!\" for a more unsafe but convenient way to permanently set the solver binding without enclosing an expression.
+At the moment, it is not a good idea to nest \"with-solver\" calls with the same solver."
   [solver & exprs]
   `(binding [current-solver-state-binding (new-solver-state ~solver)]
      ~@exprs))
@@ -126,9 +127,12 @@ Useful when using constraints that require a variable instead of a constant."
 (defn constrain!
   "Enforces a constraint to be true when it comes time to solve the variables.
 Note that newly created constraints aren't actually being enforced until you call this function."
-  [constraint]
-  (.post (get-current-solver)
-    constraint))
+  ([constraint]
+    (.post (get-current-solver)
+      constraint))
+  ([constraint & more]
+    (doseq [c (cons constraint more)]
+      (constrain! c))))
 
 (defn solve!
   "Solves for the variables. Use (get-val <variable>) to get the values of the variables you want.
@@ -152,9 +156,11 @@ You can call this function more than once, getting a new solution each time (lik
   []
   (let [solver (get-current-solver)]
     (and (solve!)
-         (solution-map (dec @(get-current-solution-n-atom))))))
+         (solution-map solver (dec @(get-current-solution-n-atom))))))
 
 (defn solutions
   "Solves the solver using the posted constraints and returns a lazy seq of maps (for each solution) from variable names to their values. You shouldn't call this function more than once."
   []
-  (take-while identity (repeatedly solution)))
+  (take-while identity (repeatedly (let [state current-solver-state-binding]
+                                     #(binding [current-solver-state-binding state]
+                                        (solution))))))
