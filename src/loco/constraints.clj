@@ -21,6 +21,13 @@
     x
     (.getUB x)))
 
+(defn- to-int-var
+  [x]
+  (cond
+    (number? x) (core/const-var x)
+    (instance? IntVar x) x
+    :else (throw (IllegalArgumentException. "Expected int-var or number"))))
+
 ;;;;; ARITHMETIC
 
 (defn $arithm
@@ -41,10 +48,11 @@ The first of two ops (if applicable) can be + or -."
   (VF/offset x const))
 
 (defn $+
-  "Takes a number of int-vars and returns another int-var which is constrained to equal the sum.
-Or pass in a variable \"X\" and a number \"const\", and get an int-view of X + const."
+  "Takes a combination of int-vars and numbers, and returns another int-var which is constrained to equal the sum.
+Or pass in a variable \"X\" and a number \"const\", and get an int-view of X + const.
+Arglists:"
   ([x]
-    x)
+    (to-int-var x))
   ([x y & more]
     (cond
       (and (empty? more)
@@ -54,22 +62,26 @@ Or pass in a variable \"X\" and a number \"const\", and get an int-view of X + c
       :else (let [vars (list* x y more)
                   mins (map #(.getLB ^IntVar %) vars)
                   maxes (map #(.getUB ^IntVar %) vars)
-                  sum-var (core/int-var (apply + mins) (apply + maxes))]
+                  sum-var (core/int-var (apply + mins) (apply + maxes))
+                  vars (map to-int-var vars) ; converting numbers to int-views
+                  ]
               (core/constrain! (ICF/sum (into-array IntVar vars) sum-var))
               sum-var))))
 
-(alter-meta! #'$+ assoc :arglists '([x const] [const x] [x y & more]))
+(alter-meta! #'$+ assoc :arglists '([const-or-var] [var const] [const var] [const-or-var1 const-or-var2 & more]))
 
 (defn $-
   "Takes a number of int-vars, and returns another int-var constrained to equal (x - y - z - ...) or (-x) if only one argument is given.
 When negating a single variable, this function returns an int-view.
-As in $+, you can pass in one var and one number and get an int-view."
+This function has the same arglists as $+."
   ([x]
     (if (number? x)
       (- x)
       (VF/minus x)))
   ([x & more]
     (apply $+ x (map $- more))))
+
+(alter-meta! #'$- assoc :arglists '([const-or-var] [var const] [const var] [const-or-var1 const-or-var2 & more]))
 
 (defn- $*view
   [x const]
@@ -78,12 +90,13 @@ As in $+, you can pass in one var and one number and get an int-view."
 (defn- keypoints
   [vars op neutral]
   (if (empty? vars)
-    neutral
+    [neutral]
     (let [v (first vars)
           lo (domain-min v)
           hi (domain-max v)]
-      (concat (op lo (keypoints (rest vars) op neutral))
-              (op hi (keypoints (rest vars) op neutral))))))
+      (for [arg1 [lo hi]
+            arg2 (keypoints (rest vars) op neutral)]
+        (op arg1 arg2)))))
 
 (defn $*
   "Pass in two int-vars and get a new int-var constrained to equal the product of the two vars.
@@ -96,14 +109,16 @@ Or, pass in a var and a number (the number is greater than or equal to -1) and g
                   total-min (apply min nums)
                   total-max (apply max nums)
                   z (core/int-var total-min total-max)]
-              (core/constrain! (ICF/times x y z))))))
+              (core/constrain! (ICF/times x y z))
+              z))))
 
-(alter-meta! #'$* assoc :arglists '([x const] [const x] [x y]))
+(alter-meta! #'$* assoc :arglists '([var const] [const var] [var1 var2]))
 
 (defn $min
   "Returns a new int-var constrained to equal the minimum of the supplied int-vars."
   [& args]
-  (let [mins (map domain-min args)
+  (let [args (map to-int-var args)
+        mins (map domain-min args)
         maxes (map domain-max args)
         final-min (apply min mins)
         final-max (apply min maxes)
@@ -117,7 +132,8 @@ Or, pass in a var and a number (the number is greater than or equal to -1) and g
 (defn $max
   "Returns a new int-var constrained to equal the maximum of the supplied int-vars."
   [& args]
-  (let [mins (map domain-min args)
+  (let [args (map to-int-var args)
+        mins (map domain-min args)
         maxes (map domain-max args)
         final-min (apply max mins)
         final-max (apply max maxes)
@@ -125,12 +141,15 @@ Or, pass in a var and a number (the number is greater than or equal to -1) and g
     (core/constrain!
       (if (= (count args) 2)
         (ICF/maximum new-var (first args) (second args))
-        (ICF/maximum new-var (into-array IntVar args))))))
+        (ICF/maximum new-var (into-array IntVar args))))
+    new-var))
 
 (defn $mod
   "Given int-vars X and Y, returns a new int-var Z constrained to equal X mod Y."
   [X Y]
-  (let [Ymax (domain-max Y)
+  (let [X (to-int-var X)
+        Y (to-int-var Y)
+        Ymax (domain-max Y)
         Z (core/int-var 0 (max (dec Ymax) 0))]
     (core/constrain! (ICF/mod X Y Z))
     Z))
@@ -147,7 +166,8 @@ Or, pass in a var and a number (the number is greater than or equal to -1) and g
         final-min (apply min (map first minmaxes))
         final-max (apply max (map second minmaxes))
         new-var (core/int-var final-min final-max)]
-    (core/constrain! (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))))
+    (core/constrain! (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
+    new-var))
 
 (declare $not $and)
 
@@ -181,8 +201,7 @@ Giving more than 2 inputs results in an $and statement with multiple $<= stateme
 Giving more than 2 inputs results in an $and statement with multiple $>= statements."
   ">=")
 (defn $!=
-  "Constrains that X != Y.
-Giving more than 2 inputs (X, Y, Z, ...) results in NOT([X = Y] ^ [Y = Z] ^ ...)"
+  "Constrains that X != Y, i.e. not(X = Y = ...)"
   ([X Y]
     ($arithm X "!=" Y))
   ([X Y Z & more]
@@ -191,12 +210,12 @@ Giving more than 2 inputs (X, Y, Z, ...) results in NOT([X = Y] ^ [Y = Z] ^ ...)
 ;;;;; LOGIC
 
 (defn $true
-  "The resulting constraint is always true. Sometimes useful as a dummy constraint inside logic constraints."
+  "Always true."
   []
   (ICF/TRUE (core/get-current-solver)))
 
 (defn $false
-  "The resulting constraint is always false. Sometimes useful as a dummy constraint inside logic constraints."
+  "Always false."
   []
   (ICF/FALSE (core/get-current-solver)))
 
