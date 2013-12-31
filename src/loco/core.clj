@@ -14,6 +14,11 @@
   Object
   (toString [this] (str solver)))
 
+(defmethod print-method
+  LocoSolver
+  [this ^java.io.Writer w]
+  (.write w (str "#" `LocoSolver "{" (:solver this) "}")))
+
 (defn solver
   [name]
   (->LocoSolver
@@ -66,8 +71,9 @@ Omitting a name will result in an auto-generated name beginning with an undersco
 An enumerated var explicitly stores all of the values in a Bit Set.
 A bounded var only stores the min and max of the domain interval.
 Sample usage:
-(int-var \"x\" 1 5 :enumerated/:bounded)
-(int-var \"x\" [1 2 3 4 5] :enumerated)"
+(int-var \"x\" 1 5)
+(int-var \"x\" 1 5 :bounded)
+(int-var \"x\" [1 2 3 4 5])"
   [& args]
   (let [[name? args] (if (namey? (first args))
                        [(first args) (rest args)]
@@ -119,9 +125,9 @@ Useful when using constraints that require a variable instead of a constant."
   (.getValue variable))
 
 (defn- solution-map
-  [solver n]
-  (into {:solution n}
-        (for [v (apply concat (vals @(get-current-vars-atom)))
+  [lsolver n]
+  (into (with-meta {} {:solution n})
+        (for [v (apply concat (vals @(:my-vars lsolver)))
               :let [n (.getName v)]
               :when (not= (first n) \_)]
           [n (get-val v)])))
@@ -137,21 +143,23 @@ Note that newly created constraints aren't actually being enforced until you cal
       (constrain! c))))
 
 (defn- solve!*
-  [solver & args]
-  (let [args (apply hash-map args)]
+  [lsolver & args]
+  (let [args (apply hash-map args)
+        solver (:solver lsolver)
+        n-atom (:n-solutions lsolver)]
     (cond
       (:maximize args) (do (.findOptimalSolution solver ResolutionPolicy/MAXIMIZE (:maximize args))
-                         (swap! (get-current-solution-n-atom) inc)
+                         (swap! n-atom inc)
                          true)
       (:minimize args) (do (.findOptimalSolution solver ResolutionPolicy/MINIMIZE (:minimize args))
-                         (swap! (get-current-solution-n-atom) inc)
+                         (swap! n-atom inc)
                          true)
       :else (try (and (.findSolution solver)
-                      (swap! (get-current-solution-n-atom) inc)
+                      (swap! n-atom inc)
                       true)
               (catch SolverException e
                 (and (.nextSolution solver)
-                     (swap! (get-current-solution-n-atom) inc)
+                     (swap! n-atom inc)
                      true))))))
 
 (defn solve!
@@ -167,13 +175,13 @@ A useful idiom for imperatively iterating through all the solutions:
 (while (solve!)
   <do stuff with variable assignments>)"
   [& args]
-  (apply solve!* (get-current-solver) args))
+  (apply solve!* (get-current-loco-solver) args))
 
 (defn- solution*
-  [solver & args]
-  (let [solved? (apply solve!* solver args)]
+  [lsolver & args]
+  (let [solved? (apply solve!* lsolver args)]
     (when solved?
-      (solution-map solver (dec @(get-current-solution-n-atom))))))
+      (solution-map lsolver (dec @(:n-solutions lsolver))))))
 
 (defn solution
   "Solves the solver using the posted constraints and returns a map from variable names to their values (or nil if there is no solution).
@@ -182,14 +190,16 @@ Keyword arguments:
 - :maximize <var> - finds the solution maximizing the given variable.
 - :minimize <var> - finds the solution minimizing the given variable.
 When optimizing a variable, if the problem is infeasible, a solution will be found anyway that bypasses some or all of the constraints.
-When not optimizing a variable, you can call this function multiple times, which will return new, updated solution maps representing the next solution (if any)."
+When not optimizing a variable, you can call this function multiple times, which will return new, updated solution maps representing the next solution (if any).
+
+Note: returned solution maps have the metadata {:solution <n>} denoting that it is the nth solution found (starting with 0)."
   [& args]
-  (apply solution* (get-current-solver) args))
+  (apply solution* (get-current-loco-solver) args))
 
 (defn solutions
   "Solves the solver using the posted constraints and returns a lazy seq of maps (for each solution) from variable names to their values.
 You shouldn't call this function more than once."
   []
-  (let [solver (get-current-solver)]
+  (let [lsolver (get-current-loco-solver)]
     (take-while identity
-                (repeatedly #(solution* solver)))))
+                (repeatedly #(solution* lsolver)))))
