@@ -1,5 +1,5 @@
 (ns loco.constraints
-  (:require [loco.core :as core])
+  (:require [loco.core :as core :refer [eval-constraint-expr]])
   (:import (solver.constraints Arithmetic
                                ICF
                                LCF
@@ -30,63 +30,61 @@
 
 ;;;;; ARITHMETIC
 
-(defn $arithm
-  "Takes an arithmetic equation consisting of 2 or 3 variables with infix operators in between.
-In the arglists, X and Y represent variables, const is a number, and ops can be strings or keywords.
-In the case of 1 op, the op can be =, !=, <, >, <=, or >=.
-In the case of 2 ops, the first op can be + or -, and the second op can be an equality/inequality specified above.
-The first of two ops (if applicable) can be + or -."
-  ([X op Y]
-    (ICF/arithm X (name op) Y))
-  ([X op1 Y op2 const]
-    (ICF/arithm X (name op1) Y (name op2) const)))
-
-(alter-meta! #'$arithm update-in [:arglists] conj '[X op const])
-
 (defn- $+view
   [x const]
   (VF/offset x const))
 
 (defn $+
-  "Takes a combination of int-vars and numbers, and returns another int-var which is constrained to equal the sum.
-Or pass in a variable \"X\" and a number \"const\", and get an int-view of X + const.
-Arglists:"
+  "Takes a combination of int-vars and numbers, and returns another number/int-var which is constrained to equal the sum."
   ([x]
-    (to-int-var x))
+    x)
   ([x y & more]
+    {:type :+
+     :args (list* x y more)}))
+(defmethod eval-constraint-expr :+
+  [{args :args} solver]
+  (let [[x y & more] (map #(eval-constraint-expr % solver) args)]
     (cond
       (and (empty? more)
            (number? y)) ($+view x y)
       (and (empty? more)
            (number? x)) ($+view y x)
       :else (let [vars (list* x y more)
+                  vars (map to-int-var vars) ; converting numbers to int-views
                   mins (map #(.getLB ^IntVar %) vars)
                   maxes (map #(.getUB ^IntVar %) vars)
-                  sum-var (core/int-var (apply + mins) (apply + maxes))
-                  vars (map to-int-var vars) ; converting numbers to int-views
+                  sum-var (core/int-var solver (apply + mins) (apply + maxes))
                   ]
-              (core/constrain! (ICF/sum (into-array IntVar vars) sum-var))
+              (core/constrain! solver (ICF/sum (into-array IntVar vars) sum-var))
               sum-var))))
 
-(alter-meta! #'$+ assoc :arglists '([const-or-var] [var const] [const var] [const-or-var1 const-or-var2 & more]))
-
 (defn $-
-  "Takes a number of int-vars, and returns another int-var constrained to equal (x - y - z - ...) or (-x) if only one argument is given.
-When negating a single variable, this function returns an int-view.
-This function has the same arglists as $+."
+  "Takes a combination of int-vars and numbers, and returns another number/int-var which is constrained
+to equal (x - y - z - ...) or (-x) if there's only one argument."
   ([x]
     (if (number? x)
       (- x)
-      (VF/minus x)))
+      {:type :neg
+       :arg x}))
   ([x & more]
     (apply $+ x (map $- more))))
+(defmethod eval-constraint-expr :neg
+  [{x :arg} solver]
+  (let [x (eval-constraint-expr x solver)]
+    (if (number? x)
+      (- x)
+      (VF/minus x))))
 
-(alter-meta! #'$- assoc :arglists '([const-or-var] [var const] [const var] [const-or-var1 const-or-var2 & more]))
+(defn $*
+  "Takes two arguments. One of the arguments can be a number greater than or equal to -1."
+  [x y]
+  {:type :*
+   :arg1 x
+   :arg2 y})
 
 (defn- $*view
   [x const]
   (VF/scale x const))
-
 (defn- keypoints
   [vars op neutral]
   (if (empty? vars)
@@ -97,11 +95,10 @@ This function has the same arglists as $+."
       (for [arg1 [lo hi]
             arg2 (keypoints (rest vars) op neutral)]
         (op arg1 arg2)))))
-
-(defn $*
-  "Pass in two int-vars and get a new int-var constrained to equal the product of the two vars.
-Or, pass in a var and a number (the number is greater than or equal to -1) and get an int-view of the product of the two items."
-  ([x y]
+(defmethod eval-constraint-expr :*
+  [{x :arg1 y :arg2} solver]
+  (let [x (eval-constraint-expr x solver)
+        y (eval-constraint-expr y solver)]
     (cond
       (number? y) ($*view x y)
       (number? x) ($*view y x)
@@ -109,55 +106,80 @@ Or, pass in a var and a number (the number is greater than or equal to -1) and g
                   total-min (apply min nums)
                   total-max (apply max nums)
                   z (core/int-var total-min total-max)]
-              (core/constrain! (ICF/times x y z))
+              (core/constrain! solver (ICF/times x y z))
               z))))
 
-(alter-meta! #'$* assoc :arglists '([var const] [const var] [var1 var2]))
-
 (defn $min
-  "Returns a new int-var constrained to equal the minimum of the supplied int-vars."
+  "The minimum of several arguments. The arguments can be a mixture of int-vars and numbers."
   [& args]
-  (let [args (map to-int-var args)
+  {:type :min
+   :args args})
+
+(defmethod eval-constraint-expr :min
+  [{args :args} solver]
+  (let [args (map #(eval-constraint-expr % solver) args)
+        args (map to-int-var args)
         mins (map domain-min args)
         maxes (map domain-max args)
         final-min (apply min mins)
         final-max (apply min maxes)
-        new-var (core/int-var final-min final-max)]
-    (core/constrain!
+        new-var (core/int-var solver final-min final-max)]
+    (core/constrain! solver
       (if (= (count args) 2)
         (ICF/minimum new-var (first args) (second args))
         (ICF/minimum new-var (into-array IntVar args))))
     new-var))
 
 (defn $max
-  "Returns a new int-var constrained to equal the maximum of the supplied int-vars."
+  "The maximum of several arguments. The arguments can be a mixture of int-vars and numbers."
   [& args]
-  (let [args (map to-int-var args)
+  {:type :max
+   :args args})
+
+(defmethod eval-constraint-expr :max
+  [{args :args} solver]
+  (let [args (map #(eval-constraint-expr % solver) args)
+        args (map to-int-var args)
         mins (map domain-min args)
         maxes (map domain-max args)
         final-min (apply max mins)
         final-max (apply max maxes)
-        new-var (core/int-var final-min final-max)]
-    (core/constrain!
+        new-var (core/int-var solver final-min final-max)]
+    (core/constrain! solver
       (if (= (count args) 2)
         (ICF/maximum new-var (first args) (second args))
         (ICF/maximum new-var (into-array IntVar args))))
     new-var))
 
 (defn $mod
-  "Given int-vars X and Y, returns a new int-var Z constrained to equal X mod Y."
+  "Given variables X and Y, returns X mod Y."
   [X Y]
-  (let [X (to-int-var X)
+  {:type :mod
+   :arg1 X
+   :arg2 Y})
+
+(defmethod eval-constraint-expr :mod
+  [{X :arg1 Y :arg2} solver]
+  (let [X (eval-constraint-expr X solver)
+        Y (eval-constraint-expr Y solver)
+        X (to-int-var X)
         Y (to-int-var Y)
         Ymax (domain-max Y)
-        Z (core/int-var 0 (max (dec Ymax) 0))]
-    (core/constrain! (ICF/mod X Y Z))
+        Z (core/int-var solver 0 (max (dec Ymax) 0))]
+    (core/constrain! solver (ICF/mod X Y Z))
     Z))
 
 (defn $scalar
   "Given a list of variables X, Y, Z, etc. and a list of number coefficients a, b, c, etc. returns a new variable constrained to equal aX + bY + cZ ..."
   [variables coefficients]
-  (let [minmaxes (for [[v c] (map vector variables coefficients)
+  {:type :scalar
+   :variables variables
+   :coefficients coefficients})
+
+(defmethod eval-constraint-expr :scalar
+  [{variables :variables coefficients :coefficients} solver]
+  (let [variables (map #(eval-constraint-expr % solver) variables)
+        minmaxes (for [[v c] (map vector variables coefficients)
                        :let [dmin (* (domain-min v) c)
                              dmax (* (domain-max v) c)]]
                    (if (< dmin dmax)
@@ -165,20 +187,33 @@ Or, pass in a var and a number (the number is greater than or equal to -1) and g
                      [dmax dmin]))
         final-min (apply min (map first minmaxes))
         final-max (apply max (map second minmaxes))
-        new-var (core/int-var final-min final-max)]
-    (core/constrain! (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
+        new-var (core/int-var solver final-min final-max)]
+    (core/constrain! solver (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
     new-var))
 
 (declare $not $and)
 
 (defmacro ^:private defn-equality-constraint
-  [name docstring str]
-  `(defn ~name
+  [fnname docstring eqstr]
+  `(defn ~fnname
      ~docstring
      ([X# Y#]
-       ($arithm X# ~str Y#))
+       {:type :arithm-eq
+        :eq ~eqstr
+        :arg1 X#
+        :arg2 Y#})
      ([X# Y# & more#]
-       (apply $and (map (partial apply ~name) (partition 2 1 (list* X# Y# more#)))))))
+       (apply $and (map (partial apply ~fnname) (partition 2 1 (list* X# Y# more#)))))))
+
+(defmethod eval-constraint-expr :arithm-eq
+  [data solver]
+  (let [op (:eq data)
+        X (eval-constraint-expr (:arg1 data) solver)
+        Y (eval-constraint-expr (:arg2 data) solver)
+        [X Y] (if (number? X)
+                [Y X]
+                [X Y])]
+    (ICF/arithm X (name op) Y)))
 
 (defn-equality-constraint $=
   "Constrains that X = Y.
@@ -201,9 +236,12 @@ Giving more than 2 inputs results in an $and statement with multiple $<= stateme
 Giving more than 2 inputs results in an $and statement with multiple $>= statements."
   ">=")
 (defn $!=
-  "Constrains that X != Y, i.e. not(X = Y = ...)"
+  "Constrains that X != Y, i.e. (not X = Y = ...)"
   ([X Y]
-    ($arithm X "!=" Y))
+    {:type :arithm-eq
+     :eq :!=
+     :arg1 X
+     :arg2 Y})
   ([X Y Z & more]
     ($not (apply $= X Y Z more))))
 
@@ -212,40 +250,68 @@ Giving more than 2 inputs results in an $and statement with multiple $>= stateme
 (defn $true
   "Always true."
   []
-  (ICF/TRUE (core/get-current-solver)))
-
+  {:type :true})
+(defmethod eval-constraint-expr :true
+  [_ solver]
+  (ICF/TRUE (:csolver solver)))
 (defn $false
   "Always false."
   []
-  (ICF/FALSE (core/get-current-solver)))
+  {:type :false})
+(defmethod eval-constraint-expr :false
+  [_ solver]
+  (ICF/FALSE (:csolver solver)))
 
 (defn $and
   "An \"and\" statement (i.e. \"P^Q^...\"); this statement is true if and only if every subconstraint is true."
   [& constraints]
   (if (empty? constraints)
     ($true)
+    {:type :and, :constraints constraints}))
+(defmethod eval-constraint-expr :and
+  [{constraints :constraints} solver]
+  (let [constraints (map #(eval-constraint-expr % solver) constraints)]
     (LCF/and (into-array Constraint constraints))))
-
 (defn $or
   "An \"or\" statement (i.e. \"PvQv...\"); this statement is true if and only if at least one subconstraint is true."
   [& constraints]
   (if (empty? constraints)
     ($false)
+    {:type :or, :constraints constraints}))
+(defmethod eval-constraint-expr :or
+  [{constraints :constraints} solver]
+  (let [constraints (map #(eval-constraint-expr % solver) constraints)]
     (LCF/or (into-array Constraint constraints))))
 
 (defn $not
-  "Given a constraint C, returns \"not C\" a.k.a. \"~C\"; not-C is true iff C is false."
+  "Given a constraint C, returns \"not C\" a.k.a. \"~C\", which is true iff C is false."
   [C]
-  (LCF/not C))
+  {:type :not, :arg C})
+
+(defmethod eval-constraint-expr :not
+  [{C :arg} solver]
+  (LCF/not (eval-constraint-expr C solver)))
 
 (defn $if
   "An \"if\" statement (i.e. \"implies\", \"P=>Q\"); this statement is true if and only if P is false or Q is true.
 In other words, if P is true, Q must be true (otherwise the whole statement is false).
 An optional \"else\" field can be specified, which must be true if P is false."
   ([if-this then-this]
-    (LCF/ifThen if-this then-this))
+    {:type :if
+     :if if-this
+     :then then-this})
   ([if-this then-this else-this]
-    (LCF/ifThenElse if-this then-this else-this)))
+    {:type :if
+     :if if-this
+     :then then-this
+     :else else-this}))
+(defmethod eval-constraint-expr :if
+  [{if-this :if then-this :then else-this :else} solver]
+  (if-not else-this
+    (LCF/ifThen (eval-constraint-expr if-this solver) (eval-constraint-expr then-this solver))
+    (LCF/ifThenElse (eval-constraint-expr if-this solver)
+                    (eval-constraint-expr then-this solver)
+                    (eval-constraint-expr else-this solver))))
 
 (defn $cond
   "A convenience function for constructing a \"cond\"-like statement out of $if statements.
@@ -266,10 +332,15 @@ If no \"else\" clause is specified, it is \"True\" by default."
     :else ($if (first clauses) (second clauses) (apply $cond (rest (rest clauses))))))
 
 (defn $reify
-  "Given a constraint C, returns a bool-var V such that (V = 1) iff C."
+  "Given a constraint C, will generate a bool-var V such that (V = 1) iff C."
   [C]
-  (let [V (core/bool-var (gensym "_reify"))]
-    (core/constrain! (LCF/reification V C))
+  {:type :reify
+   :arg C})
+(defmethod eval-constraint-expr :reify
+  [{C :arg} solver]
+  (let [C (eval-constraint-expr C solver)
+        V (core/bool-var solver)]
+    (core/constrain! solver (LCF/reification V C))
     V))
 
 ;;;;; GLOBAL
@@ -277,7 +348,12 @@ If no \"else\" clause is specified, it is \"True\" by default."
 (defn $all-different?
   "Given a bunch of int-vars, ensures that all of them have different values, i.e. no two of them are equal."
   [& vars]
-  (ICF/alldifferent (into-array IntVar vars) "DEFAULT"))
+  {:type :all-different?
+   :args vars})
+(defmethod eval-constraint-expr :all-different?
+  [{vars :args} solver]
+  (let [vars (map #(eval-constraint-expr % solver) vars)]
+    (ICF/alldifferent (into-array IntVar vars) "DEFAULT")))
 
 (defn $circuit?
   "Given a list of int-vars L, and an optional offset number (default 0), the elements of L define a circuit, where
@@ -286,6 +362,12 @@ Hint: make the offset 1 when using a 1-based list."
   ([list-of-vars]
     ($circuit? list-of-vars 0))
   ([list-of-vars offset]
+    {:type :circuit?
+     :vars list-of-vars
+     :offset offset}))
+(defmethod eval-constraint-expr :circuit?
+  [{list-of-vars :vars offset :offset} solver]
+  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)]
     (ICF/circuit (into-array IntVar list-of-vars) offset)))
 
 (defn $nth
@@ -293,11 +375,19 @@ Hint: make the offset 1 when using a 1-based list."
   ([list-of-vars index-var]
     ($nth list-of-vars index-var 0))
   ([list-of-vars index-var offset]
-    (let [final-min (apply min (map domain-min list-of-vars))
-          final-max (apply max (map domain-max list-of-vars))
-          new-var (core/int-var final-min final-max)]
-      (core/constrain! (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
-      new-var)))
+    {:type :nth
+     :vars list-of-vars
+     :index index-var
+     :offset offset}))
+(defmethod eval-constraint-expr :nth
+  [{list-of-vars :vars index-var :index offset :offset} solver]
+  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
+        index-var (eval-constraint-expr index-var solver)
+        final-min (apply min (map domain-min list-of-vars))
+        final-max (apply max (map domain-max list-of-vars))
+        new-var (core/int-var final-min final-max)]
+    (core/constrain! solver (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
+    new-var))
 
 (defn $automaton
   "Returns a Finite Automaton based on a supplied regular expression, with characters as the non-terminals.
@@ -311,4 +401,10 @@ Be careful to not use spaces; they'll be treated as their ASCII value 32!"
 (defn $satisfies-automaton?
   "Given a list of variables and an automaton (created with $automaton), constrains that the list of variables in succession results in a final state in the automaton."
   [list-of-vars automaton]
-  (ICF/regular (into-array IntVar list-of-vars) automaton))
+  {:type :satisfies-automaton?
+   :vars list-of-vars
+   :automaton automaton})
+(defmethod eval-constraint-expr :satisfies-automaton?
+  [{list-of-vars :vars automaton :automaton} solver]
+  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)]
+    (ICF/regular (into-array IntVar list-of-vars) automaton)))
