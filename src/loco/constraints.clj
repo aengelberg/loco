@@ -22,9 +22,9 @@
     (.getUB x)))
 
 (defn- to-int-var
-  [x]
+  [solver x]
   (cond
-    (number? x) (core/const-var x)
+    (number? x) (core/const-var solver x)
     (instance? IntVar x) x
     :else (throw (IllegalArgumentException. "Expected int-var or number"))))
 
@@ -50,7 +50,7 @@
       (and (empty? more)
            (number? x)) ($+view y x)
       :else (let [vars (list* x y more)
-                  vars (map to-int-var vars) ; converting numbers to int-views
+                  vars (map (partial to-int-var solver) vars) ; converting numbers to int-views
                   mins (map #(.getLB ^IntVar %) vars)
                   maxes (map #(.getUB ^IntVar %) vars)
                   sum-var (core/int-var solver (apply + mins) (apply + maxes))
@@ -105,7 +105,7 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
       :else (let [nums (keypoints [x y] * 1)
                   total-min (apply min nums)
                   total-max (apply max nums)
-                  z (core/int-var total-min total-max)]
+                  z (core/int-var solver total-min total-max)]
               (core/constrain! solver (ICF/times x y z))
               z))))
 
@@ -118,7 +118,7 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
 (defmethod eval-constraint-expr :min
   [{args :args} solver]
   (let [args (map #(eval-constraint-expr % solver) args)
-        args (map to-int-var args)
+        args (map (partial to-int-var solver) args)
         mins (map domain-min args)
         maxes (map domain-max args)
         final-min (apply min mins)
@@ -139,7 +139,7 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
 (defmethod eval-constraint-expr :max
   [{args :args} solver]
   (let [args (map #(eval-constraint-expr % solver) args)
-        args (map to-int-var args)
+        args (map (partial to-int-var solver) args)
         mins (map domain-min args)
         maxes (map domain-max args)
         final-min (apply max mins)
@@ -162,8 +162,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
   [{X :arg1 Y :arg2} solver]
   (let [X (eval-constraint-expr X solver)
         Y (eval-constraint-expr Y solver)
-        X (to-int-var X)
-        Y (to-int-var Y)
+        X (to-int-var solver X)
+        Y (to-int-var solver Y)
         Ymax (domain-max Y)
         Z (core/int-var solver 0 (max (dec Ymax) 0))]
     (core/constrain! solver (ICF/mod X Y Z))
@@ -213,6 +213,7 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
         [X Y] (if (number? X)
                 [Y X]
                 [X Y])]
+    ;(println X Y)
     (ICF/arithm X (name op) Y)))
 
 (defn-equality-constraint $=
@@ -367,7 +368,8 @@ Hint: make the offset 1 when using a 1-based list."
      :offset offset}))
 (defmethod eval-constraint-expr :circuit?
   [{list-of-vars :vars offset :offset} solver]
-  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)]
+  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
+        list-of-vars (map (partial to-int-var solver) list-of-vars)]
     (ICF/circuit (into-array IntVar list-of-vars) offset)))
 
 (defn $nth
@@ -382,6 +384,7 @@ Hint: make the offset 1 when using a 1-based list."
 (defmethod eval-constraint-expr :nth
   [{list-of-vars :vars index-var :index offset :offset} solver]
   (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
+        list-of-vars (map (partial to-int-var solver) list-of-vars)
         index-var (eval-constraint-expr index-var solver)
         final-min (apply min (map domain-min list-of-vars))
         final-max (apply max (map domain-max list-of-vars))
@@ -406,5 +409,6 @@ Be careful to not use spaces; they'll be treated as their ASCII value 32!"
    :automaton automaton})
 (defmethod eval-constraint-expr :satisfies-automaton?
   [{list-of-vars :vars automaton :automaton} solver]
-  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)]
+  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
+        list-of-vars (map (partial to-int-var solver) list-of-vars)]
     (ICF/regular (into-array IntVar list-of-vars) automaton)))

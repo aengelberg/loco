@@ -28,6 +28,10 @@
   ([]
     (solver (str (gensym "solver")))))
 
+(defn find-int-var
+  [solver x]
+  (@(:my-vars solver) (name x)))
+
 (defmulti eval-constraint-expr
   "Evaluates a map data structure in the correct behavior, typically returning a constraint or a variable."
   (fn [data solver]
@@ -39,15 +43,15 @@
 
 (defmethod eval-constraint-expr String
   [data solver]
-  (@(:my-vars solver) data))
+  (find-int-var solver data))
 
 (defmethod eval-constraint-expr clojure.lang.Keyword
   [data solver]
-  (@(:my-vars solver) (name data)))
+  (find-int-var solver data))
 
 (defmethod eval-constraint-expr clojure.lang.Symbol
   [data solver]
-  (@(:my-vars solver) (name data)))
+  (find-int-var solver data))
 
 (defn
   ^{:arglists '([solver name? min max var-type?]
@@ -114,7 +118,7 @@ Useful when using constraints that require a variable instead of a constant."
 
 (defn- solution-map
   [solver n]
-  (into (with-meta {} {:solution n})
+  (into (with-meta {} {:loco/solution n})
         (for [v (vals @(:my-vars solver))
               :let [n (.getName v)]
               :when (not= (first n) \_)]
@@ -147,10 +151,10 @@ A useful idiom for imperatively iterating through all the solutions:
         n-atom (:n-solutions solver)
         solver (:csolver solver)]
     (cond
-      (:maximize args) (do (.findOptimalSolution solver ResolutionPolicy/MAXIMIZE (:maximize args))
+      (:maximize args) (do (.findOptimalSolution solver ResolutionPolicy/MAXIMIZE (eval-constraint-expr (:maximize args)))
                          (swap! n-atom inc)
                          true)
-      (:minimize args) (do (.findOptimalSolution solver ResolutionPolicy/MINIMIZE (:minimize args))
+      (:minimize args) (do (.findOptimalSolution solver ResolutionPolicy/MINIMIZE (eval-constraint-expr (:minimize args)))
                          (swap! n-atom inc)
                          true)
       :else (try (and (.findSolution solver)
