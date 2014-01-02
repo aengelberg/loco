@@ -157,13 +157,13 @@ A useful idiom for imperatively iterating through all the solutions:
       (:minimize args) (do (.findOptimalSolution solver ResolutionPolicy/MINIMIZE (eval-constraint-expr (:minimize args)))
                          (swap! n-atom inc)
                          true)
-      :else (try (and (.findSolution solver)
-                      (swap! n-atom inc)
-                      true)
-              (catch SolverException e
-                (and (.nextSolution solver)
-                     (swap! n-atom inc)
-                     true))))))
+      :else (if (= @n-atom 0)
+              (and (.findSolution solver)
+                   (swap! n-atom inc)
+                   true)
+              (and (.nextSolution solver)
+                   (swap! n-atom inc)
+                   true)))))
 
 (defn solution
   "Solves the solver using the posted constraints and returns a map from variable names to their values (or nil if there is no solution).
