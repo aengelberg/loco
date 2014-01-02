@@ -77,7 +77,7 @@ Sample usage:
         v (case [domain-type (sequential? domain-expr)]
             [:enumerated false] (VF/enumerated var-name (:min domain-expr) (:max domain-expr)
                                                (:csolver solver))
-            [:enumerated true] (VF/enumerated var-name (int-array domain-expr)
+            [:enumerated true] (VF/enumerated var-name (int-array (sort domain-expr))
                                               (:csolver solver))
             [:bounded false] (VF/bounded var-name (:min domain-expr) (:max domain-expr)
                                          (:csolver solver))
@@ -105,7 +105,7 @@ Useful when using constraints that require a variable instead of a constant."
                            [(first args) (rest args)]
                            [nil args])
         var-name (name (if var-name? var-name? (gensym "_boolvar")))
-        v (VF/bool name (:csolver solver))]
+        v (VF/bool var-name (:csolver solver))]
     (swap! (:my-vars solver) assoc var-name v)
     v))
 

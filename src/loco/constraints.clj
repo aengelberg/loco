@@ -388,11 +388,11 @@ Hint: make the offset 1 when using a 1-based list."
         index-var (eval-constraint-expr index-var solver)
         final-min (apply min (map domain-min list-of-vars))
         final-max (apply max (map domain-max list-of-vars))
-        new-var (core/int-var final-min final-max)]
+        new-var (core/int-var solver final-min final-max)]
     (core/constrain! solver (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
     new-var))
 
-(defn $automaton
+(defn automaton
   "Returns a Finite Automaton based on a supplied regular expression, with characters as the non-terminals.
 Example of regexp: (1|2)(3*)(4|5)
 Numbers (from 0 to 9) are treated as the numbers themselves; non-digit characters are converted to their unicode numbers.
@@ -403,7 +403,7 @@ Be careful to not use spaces; they'll be treated as their ASCII value 32!"
 
 (defn $satisfies-automaton?
   "Given a list of variables and an automaton (created with $automaton), constrains that the list of variables in succession results in a final state in the automaton."
-  [list-of-vars automaton]
+  [automaton list-of-vars]
   {:type :satisfies-automaton?
    :vars list-of-vars
    :automaton automaton})
