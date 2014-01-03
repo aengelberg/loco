@@ -165,10 +165,10 @@ A useful idiom for imperatively iterating through all the solutions:
         n-atom (:n-solutions solver)
         solver (:csolver solver)]
     (cond
-      (:maximize args) (do (.findOptimalSolution solver ResolutionPolicy/MAXIMIZE (eval-constraint-expr (:maximize args)))
+      (:maximize args) (do (.findOptimalSolution solver ResolutionPolicy/MAXIMIZE (eval-constraint-expr solver (:maximize args)))
                          (swap! n-atom inc)
                          true)
-      (:minimize args) (do (.findOptimalSolution solver ResolutionPolicy/MINIMIZE (eval-constraint-expr (:minimize args)))
+      (:minimize args) (do (.findOptimalSolution solver ResolutionPolicy/MINIMIZE (eval-constraint-expr solver (:minimize args)))
                          (swap! n-atom inc)
                          true)
       :else (if (= @n-atom 0)
