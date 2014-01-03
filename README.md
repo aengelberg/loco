@@ -23,7 +23,7 @@ underneath.
 
 ## Usage
 
-(Insert lein dependency here)
+This library is still in development; there is no Leiningen dependency yet.
 
 Here is a sample problem written in Loco:
 
@@ -130,7 +130,7 @@ array one-based).
 - <code>$nth</code> - given a list L and an index i (a variable), will generate another variable that equals <code>L[i]</code>.
 - <code>$satisfies-automaton?</code> - given an automaton (created with the following function) and a list of variables, returns
 a constraint that specifies that the variables in sequence must satisfy the automaton.
-- <code>$automaton</code> - given a regular-expression-style string, returns a finite automaton to be used in <code>satisfies-automaton?</code>.
+- <code>automaton</code> - given a regular-expression-style string, returns a finite automaton to be used in <code>satisfies-automaton?</code>.
 Example: <code>($automaton "(1|2)(3*)(4|5)")</code> means that a sequence of variables begins with 1 or 2, followed by
 any number of 3's, ended with a 4 or 5. All digits (0-9) are treated as the numbers themselves, and any other character
 (that isn't a paren, bar, star, plus, etc)
