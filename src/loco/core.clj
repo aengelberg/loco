@@ -1,7 +1,8 @@
 (ns loco.core
   (:import (solver.variables VF)
            (solver.exception SolverException)
-           solver.ResolutionPolicy))
+           solver.ResolutionPolicy
+           solver.constraints.Constraint))
 
 (defn- namey?
   [x]
@@ -9,35 +10,81 @@
     (catch Exception e
       false)))
 
-(defrecord LocoSolver
-  [csolver n-solutions my-vars
-   memo-table]
-  Object
-  (toString [this] (str csolver)))
-
-(defmethod print-method
-  LocoSolver
-  [this ^java.io.Writer w]
-  (.write w (str "#" `LocoSolver "{" (:csolver this) "}")))
-
-(defn solver
-  ([name]
-    (->LocoSolver
-      (solver.Solver. name)
-      (atom 0)
-      (atom {})
-      (atom {})))
-  ([]
-    (solver (str (gensym "solver")))))
-
-(defn find-int-var
-  [solver x]
-  (@(:my-vars solver) (name x)))
+(defn- id
+  []
+  (gensym "id"))
 
 (defmulti eval-constraint-expr*
   "Evaluates a map data structure in the correct behavior, typically returning a constraint or a variable."
   (fn [data solver]
     (or (:type data) (type data))))
+
+(defrecord LocoSolver
+  [csolver memo-table my-vars n-solutions])
+
+(defn- solver
+  []
+  (->LocoSolver
+    (solver.Solver. (str (gensym "solver")))
+    (atom {})
+    (atom {})
+    (atom 0)))
+
+(defn- find-int-var
+  [solver n]
+  (@(:my-vars solver) (name n))) 
+
+(defn- get-val
+  [v]
+  (.getLB v))
+
+(defn int-var
+  [& args]
+  (let [m {:type :int-var
+           :id (id)}
+        [m args] (if (namey? (first args))
+                   [(assoc m :name (name (first args))) (rest args)]
+                   [(assoc m :name (name (gensym "_int-var"))) args])
+        [m args] (if (number? (first args))
+                   [(assoc m :domain {:min (first args) :max (second args)}) (rest (rest args))]
+                   [(assoc m :domain (first args)) (rest args)])
+        [m args] (if (= (first args) :bounded)
+                   [(assoc m :bounded true) (rest args)]
+                   [m args])]
+    (when (and (:bounded m)
+               (not (map? (:domain m))))
+      (throw (IllegalArgumentException. "Bounded domains take a min and a max only")))
+    m))
+
+(defmethod eval-constraint-expr* :int-var
+  [data solver]
+  (let [domain-expr (:domain data)
+        domain-type (if (:bounded data) :bounded :enumerated)
+        var-name (:name data)
+        v (case [domain-type (sequential? domain-expr)]
+            [:enumerated false] (VF/enumerated var-name (:min domain-expr) (:max domain-expr)
+                                               (:csolver solver))
+            [:enumerated true] (VF/enumerated var-name (int-array (sort domain-expr))
+                                              (:csolver solver))
+            [:bounded false] (VF/bounded var-name (:min domain-expr) (:max domain-expr)
+                                         (:csolver solver)))]
+    (swap! (:my-vars solver) assoc var-name v)
+    v))
+
+(defn bool-var
+  [& args]
+  (let [m {:type :bool-var
+           :id (id)}
+        m (if (namey? (first args))
+            (assoc m :name (name (first args)))
+            (assoc m :name (name (gensym "_bool-var"))))]
+    m))
+
+(defmethod eval-constraint-expr* :bool-var
+  [{var-name :name} solver]
+  (let [v (VF/bool var-name (:csolver solver))]
+    (swap! (:my-vars solver) assoc var-name v)
+    v))
 
 (defn eval-constraint-expr
   "Memoized version of eval-constraint-expr*"
@@ -67,69 +114,6 @@
   [data solver]
   (find-int-var solver data))
 
-(defn
-  ^{:arglists '([solver name? min max var-type?]
-                 [solver name? values])}
-  int-var
-  "Creates an integer variable with the desired starting domain.
-\"var-type\" is either :enumerated or :bounded (:enumerated by default).
-An enumerated var explicitly stores all of the values in a Bit Set.
-A bounded var only stores the min and max of the domain interval.
-Sample usage:
-(int-var \"x\" 1 5)
-(int-var \"x\" 1 5 :bounded)
-(int-var \"x\" [1 2 3 4 5])"
-  [solver & args]
-  (let [[var-name? args] (if (namey? (first args))
-                           [(first args) (rest args)]
-                           [nil args])
-        var-name (name (if var-name? var-name? (gensym "_intvar")))
-        [domain-expr args] (if (number? (first args))
-                             [{:min (first args) :max (second args)} (rest (rest args))]
-                             [(first args) (rest args)])
-        domain-type (or (first args) :enumerated)
-        v (case [domain-type (sequential? domain-expr)]
-            [:enumerated false] (VF/enumerated var-name (:min domain-expr) (:max domain-expr)
-                                               (:csolver solver))
-            [:enumerated true] (VF/enumerated var-name (int-array (sort domain-expr))
-                                              (:csolver solver))
-            [:bounded false] (VF/bounded var-name (:min domain-expr) (:max domain-expr)
-                                         (:csolver solver))
-            [:bounded true] (throw (Exception. "Bounded int-vars only take a min and a max")))]
-    (swap! (:my-vars solver) assoc var-name v)
-    v))
-
-(defn const-var
-  "Takes a number, and creates an object that behaves like an int-var but in fact contains a constant number.
-
-Useful when using constraints that require a variable instead of a constant."
-  ([solver n]
-    (const-var solver (gensym "_const") n))
-  ([solver var-name n]
-    (let [v (VF/fixed (name var-name) n (:csolver solver))]
-      (swap! (:my-vars solver) assoc var-name v)
-      v)))
-
-(defn
-  ^{:arglists '([solver name?])}
-  bool-var
-  "Returns a bool-var, which is essentially an int-var with a domain of [0;1]. Optionally takes a name."
-  [solver & args]
-  (let [[var-name? args] (if (namey? (first args))
-                           [(first args) (rest args)]
-                           [nil args])
-        var-name (name (if var-name? var-name? (gensym "_boolvar")))
-        v (VF/bool var-name (:csolver solver))]
-    (swap! (:my-vars solver) assoc var-name v)
-    v))
-
-(defn get-val
-  "Returns the one and only value in a variable's domain (otherwise the min, if there are multiple values)."
-  ([variable]
-    (.getValue variable))
-  ([store var-name]
-    (.getValue (@(:my-vars store) var-name))))
-
 (defn- solution-map
   [solver n]
   (into (with-meta {} {:loco/solution n})
@@ -138,28 +122,20 @@ Useful when using constraints that require a variable instead of a constant."
               :when (not= (first n) \_)]
           [n (get-val v)])))
 
-(defn constrain!
-  "Enforces a constraint to be true when it comes time to solve the variables.
-Note that newly created constraints aren't actually being enforced until you call this function."
-  ([solver constraint]
-    (.post (:csolver solver)
-      (eval-constraint-expr constraint solver)))
-  ([solver constraint & more]
-    (doseq [c (cons constraint more)]
-      (constrain! solver c))))
+(defn- constrain!
+  [solver constraint]
+  (.post (:csolver solver) constraint))
 
-(defn solve!
-  "Solves the solver using the posted constraints, and sets the variables' domains to the values (which you can retrieve with get-val).
-Keyword arguments:
-- :maximize <var> - finds the solution maximizing the given variable.
-- :minimize <var> - finds the solution minimizing the given variable.
-This function returns true if a solution is found or false if not.
-When optimizing a variable, if the problem is infeasible, a solution will be found anyway that bypasses some or all of the constraints.
-When not optimizing a variable, you can call this function multiple times, which will update the variables to the next solution, if any.
+(defn- problem->solver
+  [problem]
+  (let [s (solver)]
+    (doseq [i problem
+            :let [i (eval-constraint-expr i s)]]
+      (when (instance? Constraint i)
+        (constrain! s i)))
+    s))
 
-A useful idiom for imperatively iterating through all the solutions:
-(while (solve!)
-  <do stuff with variable assignments>)"
+(defn- solve!
   [solver & args]
   (let [args (apply hash-map args)
         n-atom (:n-solutions solver)
@@ -179,24 +155,26 @@ A useful idiom for imperatively iterating through all the solutions:
                    (swap! n-atom inc)
                    true)))))
 
-(defn solution
-  "Solves the solver using the posted constraints and returns a map from variable names to their values (or nil if there is no solution).
-You can call this function more than once, getting a new solution each time (like \"solve!\").
-Keyword arguments:
-- :maximize <var> - finds the solution maximizing the given variable.
-- :minimize <var> - finds the solution minimizing the given variable.
-When optimizing a variable, if the problem is infeasible, a solution will be found anyway that bypasses some or all of the constraints.
-When not optimizing a variable, you can call this function multiple times, which will return new, updated solution maps representing the next solution (if any).
-
-Note: returned solution maps have the metadata {:solution <n>} denoting that it is the nth solution found (starting with 0)."
+(defn solution*
   [solver & args]
   (let [solved? (apply solve! solver args)]
     (when solved?
       (solution-map solver (dec @(:n-solutions solver))))))
 
+(defn solution
+  "Solves the problem using the specified constraints and returns a map from variable names to their values (or nil if there is no solution).
+Keyword arguments:
+- :maximize <var> - finds the solution maximizing the given variable.
+- :minimize <var> - finds the solution minimizing the given variable.
+When optimizing a variable, if the problem is infeasible, a solution will be found anyway that bypasses some or all of the constraints.
+
+Note: returned solution maps have the metadata {:solution <n>} denoting that it is the nth solution found (starting with 0)."
+  [problem & args]
+  (apply solution* (problem->solver problem) args))
+
 (defn solutions
-  "Solves the solver using the posted constraints and returns a lazy seq of maps (for each solution) from variable names to their values.
-You shouldn't call this function more than once."
-  [solver]
-  (take-while identity
-              (repeatedly #(solution solver))))
+  "Solves the solver using the constraints and returns a lazy seq of maps (for each solution) from variable names to their values."
+  [problem]
+  (let [solver (problem->solver problem)]
+    (take-while identity
+                (repeatedly #(solution* solver)))))

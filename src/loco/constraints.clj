@@ -22,10 +22,26 @@
     x
     (.getUB x)))
 
+(defn make-const-var
+  [solver n]
+  (VF/fixed n solver))
+
+(defn make-int-var
+  [solver min max]
+  (VF/enumerated (str (gensym "_int-var")) min max solver))
+
+(defn make-bool-var
+  [solver]
+  (VF/bool (str (gensym "_bool-var")) solver))
+
+(defn- constrain!
+  [solver constraint]
+  (.post (:csolver solver) constraint))
+
 (defn- to-int-var
   [solver x]
   (cond
-    (number? x) (core/const-var solver x)
+    (number? x) (make-const-var solver x)
     (instance? IntVar x) x
     :else (throw (IllegalArgumentException. "Expected int-var or number"))))
 
@@ -59,9 +75,9 @@
                   vars (map (partial to-int-var solver) vars) ; converting numbers to int-views
                   mins (map #(.getLB ^IntVar %) vars)
                   maxes (map #(.getUB ^IntVar %) vars)
-                  sum-var (core/int-var solver (apply + mins) (apply + maxes))
+                  sum-var (make-int-var solver (apply + mins) (apply + maxes))
                   ]
-              (core/constrain! solver (ICF/sum (into-array IntVar vars) sum-var))
+              (constrain! solver (ICF/sum (into-array IntVar vars) sum-var))
               sum-var))))
 
 (defn $-
@@ -113,8 +129,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
       :else (let [nums (keypoints [x y] * 1)
                   total-min (apply min nums)
                   total-max (apply max nums)
-                  z (core/int-var solver total-min total-max)]
-              (core/constrain! solver (ICF/times x y z))
+                  z (make-int-var solver total-min total-max)]
+              (constrain! solver (ICF/times x y z))
               z))))
 
 (defn $min
@@ -132,8 +148,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
         maxes (map domain-max args)
         final-min (apply min mins)
         final-max (apply min maxes)
-        new-var (core/int-var solver final-min final-max)]
-    (core/constrain! solver
+        new-var (make-int-var solver final-min final-max)]
+    (constrain! solver
       (if (= (count args) 2)
         (ICF/minimum new-var (first args) (second args))
         (ICF/minimum new-var (into-array IntVar args))))
@@ -154,8 +170,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
         maxes (map domain-max args)
         final-min (apply max mins)
         final-max (apply max maxes)
-        new-var (core/int-var solver final-min final-max)]
-    (core/constrain! solver
+        new-var (make-int-var solver final-min final-max)]
+    (constrain! solver
       (if (= (count args) 2)
         (ICF/maximum new-var (first args) (second args))
         (ICF/maximum new-var (into-array IntVar args))))
@@ -176,8 +192,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
         X (to-int-var solver X)
         Y (to-int-var solver Y)
         Ymax (domain-max Y)
-        Z (core/int-var solver 0 (max (dec Ymax) 0))]
-    (core/constrain! solver (ICF/mod X Y Z))
+        Z (make-int-var solver 0 (max (dec Ymax) 0))]
+    (constrain! solver (ICF/mod X Y Z))
     Z))
 
 (defn $scalar
@@ -199,8 +215,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
                      [dmax dmin]))
         final-min (apply min (map first minmaxes))
         final-max (apply max (map second minmaxes))
-        new-var (core/int-var solver final-min final-max)]
-    (core/constrain! solver (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
+        new-var (make-int-var solver final-min final-max)]
+    (constrain! solver (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
     new-var))
 
 (declare $not $and)
@@ -359,8 +375,8 @@ If no \"else\" clause is specified, it is \"True\" by default."
 (defmethod eval-constraint-expr* :reify
   [{C :arg} solver]
   (let [C (eval-constraint-expr C solver)
-        V (core/bool-var solver)]
-    (core/constrain! solver (LCF/reification V C))
+        V (make-bool-var solver)]
+    (constrain! solver (LCF/reification V C))
     V))
 
 ;;;;; GLOBAL
@@ -410,8 +426,8 @@ Hint: make the offset 1 when using a 1-based list."
         index-var (eval-constraint-expr index-var solver)
         final-min (apply min (map domain-min list-of-vars))
         final-max (apply max (map domain-max list-of-vars))
-        new-var (core/int-var solver final-min final-max)]
-    (core/constrain! solver (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
+        new-var (make-int-var solver final-min final-max)]
+    (constrain! solver (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
     new-var))
 
 (defn automaton
