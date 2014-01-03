@@ -10,7 +10,8 @@
       false)))
 
 (defrecord LocoSolver
-  [csolver n-solutions my-vars]
+  [csolver n-solutions my-vars
+   memo-table]
   Object
   (toString [this] (str csolver)))
 
@@ -24,6 +25,7 @@
     (->LocoSolver
       (solver.Solver. name)
       (atom 0)
+      (atom {})
       (atom {})))
   ([]
     (solver (str (gensym "solver")))))
@@ -32,24 +34,36 @@
   [solver x]
   (@(:my-vars solver) (name x)))
 
-(defmulti eval-constraint-expr
+(defmulti eval-constraint-expr*
   "Evaluates a map data structure in the correct behavior, typically returning a constraint or a variable."
   (fn [data solver]
     (or (:type data) (type data))))
 
-(defmethod eval-constraint-expr :default
+(defn eval-constraint-expr
+  "Memoized version of eval-constraint-expr*"
+  [data solver]
+  (let [lookup (when (:id data)
+                 (@(:memo-table solver) (:id data)))]
+    (if lookup
+      lookup
+      (let [result (eval-constraint-expr* data solver)]
+        (when (:id data)
+          (swap! (:memo-table solver) assoc (:id data) result))
+        result))))
+
+(defmethod eval-constraint-expr* :default
   [data solver]
   data)
 
-(defmethod eval-constraint-expr String
+(defmethod eval-constraint-expr* String
   [data solver]
   (find-int-var solver data))
 
-(defmethod eval-constraint-expr clojure.lang.Keyword
+(defmethod eval-constraint-expr* clojure.lang.Keyword
   [data solver]
   (find-int-var solver data))
 
-(defmethod eval-constraint-expr clojure.lang.Symbol
+(defmethod eval-constraint-expr* clojure.lang.Symbol
   [data solver]
   (find-int-var solver data))
 
