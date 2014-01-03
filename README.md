@@ -200,7 +200,7 @@ Here is an example of using threading macros to avoid passing a solver to too ma
 	  (solutions))
 	=> ({"x" 3, "y" 5})
 
-You may assume that this library is pretty slow for significant problems,
+You might assume that this library is pretty slow for significant problems,
 given that it takes 5-10 milliseconds for a small problem. However, there is significant overhead attached to the
 process of creating the variables and constraints, mostly because of the usage of Clojure data structures to simplify
 the user interface. But once the lower-level Java library underneath kicks in, it's much faster to actually find
