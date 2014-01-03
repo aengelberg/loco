@@ -19,6 +19,21 @@
   (fn [data solver]
     (or (:type data) (type data))))
 
+(defn var-declarations
+  "Returns a list of var declarations contained anywhere within a data structure"
+  [data]
+  (loop [q (conj clojure.lang.PersistentQueue/EMPTY data)
+         vars #{}]
+    (cond
+      (empty? q) vars
+      :else (let [p (peek q)
+                  q (pop q)]
+              (cond
+                (:var-declaration p) (recur q (conj vars p))
+                (sequential? p) (recur (into q p) vars)
+                (map? p) (recur (into q (vals p)) vars)
+                :else (recur q vars))))))
+
 (defrecord LocoSolver
   [csolver memo-table my-vars n-solutions])
 
@@ -32,7 +47,11 @@
 
 (defn- find-int-var
   [solver n]
-  (@(:my-vars solver) (name n))) 
+  (or (@(:my-vars solver) (name n))
+      (throw (IllegalAccessException. (str "var with name \"" n
+                                           "\" is referenced to,"
+                                           " but not declared "
+                                           "anywhere in the problem")))))
 
 (defn- get-val
   [v]
@@ -41,7 +60,8 @@
 (defn int-var
   [& args]
   (let [m {:type :int-var
-           :id (id)}
+           :id (id)
+           :var-declaration true}
         [m args] (if (namey? (first args))
                    [(assoc m :name (name (first args))) (rest args)]
                    [(assoc m :name (name (gensym "_int-var"))) args])
@@ -74,7 +94,8 @@
 (defn bool-var
   [& args]
   (let [m {:type :bool-var
-           :id (id)}
+           :id (id)
+           :var-declaration true}
         m (if (namey? (first args))
             (assoc m :name (name (first args)))
             (assoc m :name (name (gensym "_bool-var"))))]
@@ -128,7 +149,9 @@
 
 (defn- problem->solver
   [problem]
-  (let [s (solver)]
+  (let [problem (concat (var-declarations problem)
+                        problem) ; dig for the var declarations and put them at the front
+        s (solver)]
     (doseq [i problem
             :let [i (eval-constraint-expr i s)]]
       (when (instance? Constraint i)
