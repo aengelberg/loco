@@ -24,15 +24,15 @@
 
 (defn make-const-var
   [solver n]
-  (VF/fixed n solver))
+  (VF/fixed n (:csolver solver)))
 
 (defn make-int-var
   [solver min max]
-  (VF/enumerated (str (gensym "_int-var")) min max solver))
+  (VF/enumerated (str (gensym "_int-var")) min max (:csolver solver)))
 
 (defn make-bool-var
   [solver]
-  (VF/bool (str (gensym "_bool-var")) solver))
+  (VF/bool (str (gensym "_bool-var")) (:csolver solver)))
 
 (defn- constrain!
   [solver constraint]
