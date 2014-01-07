@@ -78,6 +78,8 @@ Possible arglist examples:
 
 (defmethod eval-constraint-expr* :int-var
   [data solver]
+  (when (@(:my-vars solver) (:name data))
+    (throw (IllegalArgumentException. (str "var with name " (:name data) " is declared twice"))))
   (let [domain-expr (:domain data)
         domain-type (if (:bounded data) :bounded :enumerated)
         var-name (:name data)

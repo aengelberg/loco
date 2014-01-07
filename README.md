@@ -29,26 +29,18 @@ Here is a sample problem written in Loco:
 
 	(defn sample-problem
 	  []
-	  (let [s (solver "sample_problem")
-	        x (int-var s "x" 1 5)
-	        y (int-var s "y" 2 6)]
-	    (constrain! s
-	      ($= ($+ x y) 10)
-	      ($= x y))
-	    (solution s)))
+	  (solution
+	    [($int :x 1 5)
+	     ($int :y 2 6)
+	     ($= ($+ :x :y) 10)
+	     ($= :x :y)]))
 	=>
 	{"x" 5, "y" 5}
 
 ## API
 
-#### The solver
-
-The "solver" is essentially a container for all of the variables and constraints in your CP problem.
-Calls to <code>int-var</code> and <code>constrain!</code> require that the corresponding solver be the first argument.
-You can create a solver using <code>loco.core/solver</code>:
-
-	(solver "mySolver")
-	(solver)
+A "problem" is a list of constraints. These constraints can either be the creation of integer variables,
+or constraints on already created integer variables.
 
 #### Creating vars
 
@@ -59,24 +51,49 @@ However, a "bounded int-var" is a variation on this concept, which keeps track o
 the domain. It provides a trade-off between memory and running time (decreasing memory usage but increasing running time).
 I recommend sticking with the enumerated variables unless you are running low on memory.
 
-To create an int-var, use the <code>loco.core/int-var</code> function:
+Creating an int-var occurs in the form of a constraint, <code>loco.constraints/$int</code>.
+Exactly one <code>$int</code> statement is required for each var that is referenced to in the other constraints.
 
-	(int-var solver name? min max)
-	(int-var solver name? values)
-	(int-var solver name? min max :bounded)
+	($int name min max)
+	($int name values)
+	($int name min max :bounded)
 	Examples:
-	(def s (solver))
-	(int-var s "a" 1 5)
-	(def b (int-var s 1 5))
-	(int-var s "c" [1 2 3 4 5])
-	(int-var s "d" 1 5 :bounded)
+	($int :a 1 5)
+	($int :b [1 2 3 4 5])
+	($int :c 1 5 :bounded)
+	(solution [($int :x 1 5)
+	           ($= :x 2)])
+	; declarations of vars can appear after a constraint that references it
+	(solution [($= :x 2)
+	           ($int :x 1 5)])
 
-In all cases, the "name" field is optional.
+A "boolean var" (or "bool-var") is an int-var that has the domain #{0 1}. You can create one with
 
-A "boolean var" (or "bool-var") is an int-var that has the domain #{0, 1}. You can create one with
+	($bool name)
 
-	(bool-var solver name?)
-	
+#### Variable names
+
+In Loco, there are two valid types that can be used as a variable name. Keywords, and vectors that begin with keywords.
+For example:
+
+	($int :a 1 5)
+	($int :a_b 1 5)
+	($int [:a 1] 1 5)
+	($int [:b [1 2] {1 5} "a"] 1 5)  ; still valid
+	($int [1 2] 1 5) ; not valid
+
+The reason behind this design decision is that a lot of formal notation for CP problems uses subscripts
+to represent an array of variables that are related enough to have the same name but be distinguished by
+an id number. (LaTeX image below)
+
+<img src="http://latex.codecogs.com/gif.latex?\newline%20x_1%20\times%20y%20=%20z%20\newline%20x_2%20+%20z_3%20=%202%20\newline%20\text{alldifferent}(x_{1,1},%20x_{1,2}%20...%20x_{1,9})" border="0"/>
+
+Here are the Loco equivalents of the constraints shown above:
+
+	($= ($* [:x 1] :y) :z)
+	($= ($+ [:x 2] [:z 3]) 2)
+	(apply $all-different? (for [j (range 1 (inc 9))]
+	                         [:x 1 j]))
 
 
 #### Creating constraints
@@ -86,10 +103,8 @@ all begin with <code>$</code> (e.g. <code>$=</code> for "=", <code>$all-differen
 that you can safely call <code>(use 'loco.constraints)</code> without overlap with clojure.core functions.
 
 Note that some of these functions don't actually return
-constraints, but will generate new variables to be used in constraints. For example, you'd never call
-<code>(constrain! ($+ x y))</code>, but you might call <code>(constrain! ($= ($+ x y) 2))</code>. Also note
-that these variable-generators don't generate the variables immediately; they return a data structure to be
-interpreted by the <code>constrain!</code> function later.
+constraints, but will generate new variables to be used in constraints. For example, you'd never want to
+constrain <code>($+ x y)</code>, but you might constrain <code>($= ($+ x y) 2)</code>.
 
 Here is a complete list of all of the constraints available to you.
 - <code>$+</code> - given a mixture of variables / numbers, returns the sum.
@@ -117,8 +132,7 @@ iff C is false.
 Given P and Q, returns P => Q, i.e. P or ~Q. Given P, Q, and R, returns (P => Q) ^ (~P => R).
 - <code>$cond</code> - takes several if-then pairs (as one would use in <code>cond</code>), and composes together
 several <code>$if</code> constraints. The final "else" clause can be specified with <code>:else</code> (like in <code>cond</code>),
-or put as the last argument (like in <code>case</code> and <code>condp</code>). This function is mostly syntactic sugar, and not
-more efficient than composing the <code>$if</code> statements manually.
+or put as the last argument (like in <code>case</code> and <code>condp</code>).
 
 - <code>$reify</code> - given a constraint C, will generate a boolean var V, such that V = 1 iff C.
 - <code>$all-different?</code> - a constraint that specifies that several variables must end up with different values.
@@ -138,76 +152,38 @@ is treated as its unicode number. e.g. to write the number 10, you'd have to wri
 
 #### Finding solutions
 
-It's no fun to set up your variables and constraints and then not have a way to find the solution. There are a few
+It's no fun to set up your variables and constraints and then not have a way to find the solution. There are a couple
 ways to find solutions:
 
-Calling <code>(solve! solver)</code> will return true if it finds a solution and false if not. If it did find a solution,
-you can call <code>(get-val x)</code> on all of the variables you wish to find the values of.
+The first way is to call <code>solution</code>, which takes just a sequence of constraints.
+It returns a solution map, whose keys are variable names, and whose values are the values of the variables.
 
-	(let [s (solver "sample")
-	      x (int-var s "x" 1 5)]
-	  (constrain! s ($= x 1))
-	  (solve! s)
-	  (get-val x))
-	=> 1
+	(solution [($int :x 1 5)
+	           ($int :y 1 5)
+	           ($= :x ($+ :y 4))]
+	=> {:x 5, :y 1}
 
-You can also call <code>solve!</code> with keyword argument <code>:minimize</code> or <code>:maximize</code>.
+You can also call <code>solution</code> with keyword arguments to specify the optimization of a given variable
+(or arithmetic expression).
 
-	(let [s (solver "sample")
-          x (int-var s "x" 1 5)]
-      (constrain! s ($> x 2))
-      (solve! s :minimize x)
-      (get-val x))
-    => 3
-    
-Note that if you minimize/maximize a variable and there is no solution, the solver will find a solution that bypasses
-one or more of the constraints. This idiosyncrasy is built-in to the underlying Java library and thus beyond my control.
+	(solution [($int :x 1 5)
+	           ($int :y 1 5)]
+	          :maximize ($- :x :y))
+	=> {:x 5, :y 1}
 
-One more thing I need to mention about <code>solve!</code> is that you call it multiple times (when you aren't minimizing/maximizing).
-Each successive call to <code>solve!</code> will set the variables to a new solution, returning false when it's out of solutions.
+One idiosyncrasy I need to mention: if you use a <code>:minimize/:maximize</code> keyword, and the problem
+is infeasible, the solving engine will find a solution anyway that bypasses some or all of the constraints.
+This quirk is in the solver itself (which this library is a wrapper of), and therefore it was beyond my control.
 
-The next way to find a solution is to call <code>(solution solver)</code>. It calls <code>solve!</code> and then returns a map,
-whose keys are the names
-of variables that you gave names to, and whose vals are their values. It behaves like <code>solve!</code> in that
-you can call it multiple times, or pass in variables to optimize.
+Finally, you can get a lazy sequence of ALL of the solutions by calling <code>solutions</code>:
 
-	(let [s (solver "sample")
-	      x (int-var s "x" 1 5)]
-	  (constrain! s ($> x 2))
-	  (solution s :minimize x))
-	=> {:x 3}
-
-Finally, you can find a lazy sequence of solution maps to all solutions, via <code>(solutions solver)</code>.
-Solution maps have metadata attached with the keyword <code>:loco/solution</code> denoting the nth solution
-(starting with 0). Don't call <code>solutions</code> more than once, as the second call to it will most likely
-return an empty list (or have even more awkward behavior if the first result hasn't been fully realized yet).
-
-#### Fun facts / common idioms
-
-First of all, you can use the names of variables (as strings, keywords, or symbols) anywhere you would put the variable
-itself. This includes inside constraints, and in uses of the <code>:minimize/:maximize</code> keyword.
-
-You can also pass arithmetic to the optimizers, e.g. <code>(solve! s :minimize ($+ x y))</code>. Using this feature
-with <code>$scalar</code> allows you to emulate Mixed Integer Programming (e.g. Linear Programming with integer variables).
-
-Here is an example of using threading macros to avoid passing a solver to too many function calls.
-
-	(-> (solver "sample")
-	  (doto
-	    (int-var "x" 1 4)
-	    (int-var "y" 2 5)
-	    (constrain! ($= ($* :x :y) 15)))
-	  (solutions))
-	=> ({"x" 3, "y" 5})
-
-You might assume that this library is pretty slow for significant problems,
-given that it takes 5-10 milliseconds for a small problem. However, there is significant overhead attached to the
-process of creating the variables and constraints, mostly because of the usage of Clojure data structures to simplify
-the user interface. But once the lower-level Java library underneath kicks in, it's much faster to actually find
-solutions.
+	(solutions [($int :x 1 5)
+	            ($int :y 1 5)
+	            ($= :x :y)]
+	=> ({:x 1, :y 1}, {:x 2, :y 2}, {:x 3, :y 3}, {:x 4, :y 4}, {:x 5, :y 5})
 
 ## License
 
-Copyright © 2013 FIXME
+Copyright © 2013
 
 Distributed under the Eclipse Public License, the same as Clojure.
