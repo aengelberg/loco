@@ -17,22 +17,18 @@
 (defmulti eval-constraint-expr*
   "Evaluates a map data structure in the correct behavior, typically returning a constraint or a variable."
   (fn [data solver]
-    (or (:type data) (type data))))
+    (if (and (vector? data)
+             (keyword? (first data)))
+      :vector-var-name
+      (or (:type data) (type data)))))
 
-(defn var-declarations
-  "Returns a list of var declarations contained anywhere within a data structure"
+(defn- var-declarations
   [data]
-  (loop [q (conj clojure.lang.PersistentQueue/EMPTY data)
-         vars #{}]
-    (cond
-      (empty? q) vars
-      :else (let [p (peek q)
-                  q (pop q)]
-              (cond
-                (:var-declaration p) (recur q (conj vars p))
-                (sequential? p) (recur (into q p) vars)
-                (map? p) (recur (into q (vals p)) vars)
-                :else (recur q vars))))))
+  (filter :var-declaration data))
+
+(defn without-var-declarations
+  [data]
+  (remove :var-declaration data))
 
 (defrecord LocoSolver
   [csolver memo-table my-vars n-solutions])
@@ -47,7 +43,7 @@
 
 (defn- find-int-var
   [solver n]
-  (or (@(:my-vars solver) (name n))
+  (or (@(:my-vars solver) n)
       (throw (IllegalAccessException. (str "var with name \"" n
                                            "\" is referenced to,"
                                            " but not declared "
@@ -56,56 +52,6 @@
 (defn- get-val
   [v]
   (.getLB v))
-
-(defn int-var
-  [& args]
-  (let [m {:type :int-var
-           :id (id)
-           :var-declaration true}
-        [m args] (if (namey? (first args))
-                   [(assoc m :name (name (first args))) (rest args)]
-                   [(assoc m :name (name (gensym "_int-var"))) args])
-        [m args] (if (number? (first args))
-                   [(assoc m :domain {:min (first args) :max (second args)}) (rest (rest args))]
-                   [(assoc m :domain (first args)) (rest args)])
-        [m args] (if (= (first args) :bounded)
-                   [(assoc m :bounded true) (rest args)]
-                   [m args])]
-    (when (and (:bounded m)
-               (not (map? (:domain m))))
-      (throw (IllegalArgumentException. "Bounded domains take a min and a max only")))
-    m))
-
-(defmethod eval-constraint-expr* :int-var
-  [data solver]
-  (let [domain-expr (:domain data)
-        domain-type (if (:bounded data) :bounded :enumerated)
-        var-name (:name data)
-        v (case [domain-type (sequential? domain-expr)]
-            [:enumerated false] (VF/enumerated var-name (:min domain-expr) (:max domain-expr)
-                                               (:csolver solver))
-            [:enumerated true] (VF/enumerated var-name (int-array (sort domain-expr))
-                                              (:csolver solver))
-            [:bounded false] (VF/bounded var-name (:min domain-expr) (:max domain-expr)
-                                         (:csolver solver)))]
-    (swap! (:my-vars solver) assoc var-name v)
-    v))
-
-(defn bool-var
-  [& args]
-  (let [m {:type :bool-var
-           :id (id)
-           :var-declaration true}
-        m (if (namey? (first args))
-            (assoc m :name (name (first args)))
-            (assoc m :name (name (gensym "_bool-var"))))]
-    m))
-
-(defmethod eval-constraint-expr* :bool-var
-  [{var-name :name} solver]
-  (let [v (VF/bool var-name (:csolver solver))]
-    (swap! (:my-vars solver) assoc var-name v)
-    v))
 
 (defn eval-constraint-expr
   "Memoized version of eval-constraint-expr*"
@@ -123,25 +69,22 @@
   [data solver]
   data)
 
-(defmethod eval-constraint-expr* String
-  [data solver]
-  (find-int-var solver data))
-
 (defmethod eval-constraint-expr* clojure.lang.Keyword
   [data solver]
   (find-int-var solver data))
 
-(defmethod eval-constraint-expr* clojure.lang.Symbol
+(defmethod eval-constraint-expr* :vector-var-name
   [data solver]
   (find-int-var solver data))
 
 (defn- solution-map
   [solver n]
   (into (with-meta {} {:loco/solution n})
-        (for [v (vals @(:my-vars solver))
-              :let [n (.getName v)]
-              :when (not= (first n) \_)]
-          [n (get-val v)])))
+        (for [[var-name v] @(:my-vars solver)
+              :when (if (keyword? var-name)
+                      (not= (first (name var-name)) \_)
+                      (not= (first (name (first var-name))) \_))]
+          [var-name (get-val v)])))
 
 (defn- constrain!
   [solver constraint]
@@ -150,7 +93,7 @@
 (defn- problem->solver
   [problem]
   (let [problem (concat (var-declarations problem)
-                        problem) ; dig for the var declarations and put them at the front
+                        (without-var-declarations problem)) ; dig for the var declarations and put them at the front
         s (solver)]
     (doseq [i problem
             :let [i (eval-constraint-expr i s)]]

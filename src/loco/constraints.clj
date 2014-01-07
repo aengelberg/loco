@@ -49,6 +49,66 @@
   []
   (gensym "id"))
 
+;;;;; VAR GENERATION
+
+(defn $int
+  "Declares the domain of a variable. This constraint cannot be nested inside logical constraints.
+Possible arglist examples:
+($int :x 1 5)
+($int :x [1 2 3 4 5])
+($int :x 1 5 :bounded)"
+  [var-name & args]
+  {:pre [(or (keyword? var-name)
+             (and (vector? var-name)
+                  (keyword? (first var-name))))]}
+  (let [m {:type :int-var
+           :var-declaration true
+           :name var-name
+           :real-name (str (gensym "int_var"))}
+        [m args] (if (number? (first args))
+                   [(assoc m :domain {:min (first args) :max (second args)}) (rest (rest args))]
+                   [(assoc m :domain (first args)) (rest args)])
+        [m args] (if (= (first args) :bounded)
+                   [(assoc m :bounded true) (rest args)]
+                   [m args])]
+    (when (and (:bounded m)
+               (not (map? (:domain m))))
+      (throw (IllegalArgumentException. "Bounded domains take a min and a max only")))
+    m))
+
+(defmethod eval-constraint-expr* :int-var
+  [data solver]
+  (let [domain-expr (:domain data)
+        domain-type (if (:bounded data) :bounded :enumerated)
+        var-name (:name data)
+        real-name (:real-name data)
+        v (case [domain-type (sequential? domain-expr)]
+            [:enumerated false] (VF/enumerated real-name (:min domain-expr) (:max domain-expr)
+                                               (:csolver solver))
+            [:enumerated true] (VF/enumerated real-name (int-array (sort domain-expr))
+                                              (:csolver solver))
+            [:bounded false] (VF/bounded real-name (:min domain-expr) (:max domain-expr)
+                                         (:csolver solver)))]
+    (swap! (:my-vars solver) assoc var-name v)
+    nil))
+
+(defn $bool
+  "Declares that the domain of a variable is [0;1]. This constraint cannot be nested inside logical constraints."
+  [var-name]
+  {:pre [(or (keyword? var-name)
+             (and (vector? var-name)
+                  (keyword? (first var-name))))]}
+  {:type :bool-var
+   :var-declaration true
+   :name var-name
+   :real-name (str (gensym "bool_var"))})
+
+(defmethod eval-constraint-expr* :bool-var
+  [{var-name :name real-name :real-name} solver]
+  (let [v (VF/bool real-name (:csolver solver))]
+    (swap! (:my-vars solver) assoc var-name v)
+    nil))
+
 ;;;;; ARITHMETIC
 
 (defn- $+view
