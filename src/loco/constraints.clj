@@ -124,23 +124,32 @@ Possible arglist examples:
   ([x y & more]
     {:type :+
      :args (list* x y more)
-     :id (id)}))
+     :id (id)
+     :can-optimize-eq (if (empty? more)
+                        #{}
+                        #{:= :< :> :<= :>= :!=})}))
 (defmethod eval-constraint-expr* :+
-  [{args :args} solver]
-  (let [[x y & more] (map #(eval-constraint-expr % solver) args)]
-    (cond
-      (and (empty? more)
-           (number? y)) ($+view x y)
-      (and (empty? more)
-           (number? x)) ($+view y x)
-      :else (let [vars (list* x y more)
-                  vars (map (partial to-int-var solver) vars) ; converting numbers to int-views
-                  mins (map #(.getLB ^IntVar %) vars)
-                  maxes (map #(.getUB ^IntVar %) vars)
-                  sum-var (make-int-var solver (apply + mins) (apply + maxes))
-                  ]
-              (constrain! solver (ICF/sum (into-array IntVar vars) sum-var))
-              sum-var))))
+  [{args :args :as m} solver]
+  (if (:optimizing-eq m)
+    (let [args (map #(eval-constraint-expr % solver) args)
+          args (map (partial to-int-var solver) args)]
+      (ICF/sum (into-array IntVar args)
+               (name (:optimizing-eq m))
+               (to-int-var solver (eval-constraint-expr (:eq-arg m) solver))))
+    (let [[x y & more] (map #(eval-constraint-expr % solver) args)]
+      (cond
+        (and (empty? more)
+             (number? y)) ($+view x y)
+        (and (empty? more)
+             (number? x)) ($+view y x)
+        :else (let [vars (list* x y more)
+                    vars (map (partial to-int-var solver) vars) ; converting numbers to int-views
+                    mins (map #(.getLB ^IntVar %) vars)
+                    maxes (map #(.getUB ^IntVar %) vars)
+                    sum-var (make-int-var solver (apply + mins) (apply + maxes))
+                    ]
+                (constrain! solver (ICF/sum (into-array IntVar vars) sum-var))
+                sum-var)))))
 
 (defn $-
   "Takes a combination of int-vars and numbers, and returns another number/int-var which is constrained
@@ -283,16 +292,36 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
 
 (declare $not $and)
 
+(def ^:private eq-converse
+  {:= :=
+   :< :>
+   :> :<
+   :<= :>=
+   :>= :<=
+   :!= :!=})
+
 (defmacro ^:private defn-equality-constraint
   [fnname docstring eqstr]
   `(defn ~fnname
      ~docstring
      ([X# Y#]
-       {:type :arithm-eq
-        :eq ~eqstr
-        :arg1 X#
-        :arg2 Y#
-        :id (id)})
+       (cond
+         (contains? (:can-optimize-eq X#) ~(keyword eqstr))
+         (-> X#
+           (assoc :optimizing-eq ~(keyword eqstr) :eq-arg Y#)
+           (dissoc :can-optimize-eq))
+         
+         (contains? (:can-optimize-eq Y#) ~(eq-converse (keyword eqstr)))
+         (-> Y#
+           (assoc :optimizing-eq ~(eq-converse (keyword eqstr)) :eq-arg X#)
+           (dissoc :can-optimize-eq))
+         
+         :else
+         {:type :arithm-eq
+          :eq ~eqstr
+          :arg1 X#
+          :arg2 Y#
+          :id (id)}))
      ([X# Y# & more#]
        (apply $and (map (partial apply ~fnname) (partition 2 1 (list* X# Y# more#)))))))
 

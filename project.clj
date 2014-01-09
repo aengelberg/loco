@@ -1,6 +1,6 @@
 (defproject loco "0.1.0-SNAPSHOT"
-  :description "FIXME: write description"
-  :url "http://example.com/FIXME"
+  :description "Constraint Programming for Clojure"
+  :url "http://github.com/aengelberg/loco"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :repositories [["choco.repos" "http://www.emn.fr/z-info/choco-repo/mvn/repository/"]]
