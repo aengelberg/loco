@@ -23,7 +23,7 @@ underneath.
 
 ## Usage
 
-This library is still in development; there is no Leiningen dependency yet.
+	[loco "0.1.0-SNAPSHOT"]
 
 Here is a sample problem written in Loco:
 
