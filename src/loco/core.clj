@@ -1,8 +1,10 @@
 (ns loco.core
-  (:import (solver.variables VF)
+  (:import (solver.variables VF IntVar)
            (solver.exception SolverException)
            solver.ResolutionPolicy
-           solver.constraints.Constraint))
+           solver.constraints.Constraint
+           (solver.search.strategy ISF
+                                   strategy.AbstractStrategy)))
 
 (defn- namey?
   [x]
@@ -22,13 +24,46 @@
       :vector-var-name
       (or (:type data) (type data)))))
 
-(defn- var-declarations
-  [data]
-  (filter :var-declaration data))
+(defn- intersect-domains
+  [d1 d2]
+  (cond
+    (and (not (map? d1))
+         (not (map? d2))) (filter (set d1) d2)
+    (and (not (map? d1))
+         (map? d2)) (let [{lo :min hi :max} d2]
+                      (filter #(<= lo % hi) d1))
+    (and (map? d1)
+         (not (map? d2))) (recur d2 d1)
+    :else (let [{lo1 :min hi1 :max b1? :bounded} d1
+                {lo2 :min hi2 :max b2? :bounded} d2
+                m {:min (max lo1 lo2)
+                   :max (min hi1 hi2)}]
+            (if (and b1? b2?)
+              (assoc m :bounded true)
+              m))))
 
-(defn without-var-declarations
+(defn- top-level-var-declarations
+  "finds top-level domain declarations, merges them per-variable,
+and returns a list of variable declarations"
   [data]
-  (remove :var-declaration data))
+  (let [domain-decls (filter :can-init-var data)
+        all-domains (group-by :name domain-decls)]
+    (for [[var-name decls] all-domains
+          :let [final-domain (reduce intersect-domains (map :domain decls))]]
+      (if (if (map? final-domain)
+            (= final-domain {:min 0 :max 1})
+            (= #{0 1} (set final-domain)))
+        {:type :bool-var
+         :name var-name
+         :real-name (name (gensym "bool-var"))}
+        {:type :int-var
+         :name var-name
+         :real-name (name (gensym "int-var"))
+         :domain (reduce intersect-domains (map :domain decls))}))))
+
+(defn- without-top-level-var-declarations
+  [data]
+  (remove :can-init-var data))
 
 (defrecord LocoSolver
   [csolver memo-table my-vars n-solutions])
@@ -44,10 +79,10 @@
 (defn- find-int-var
   [solver n]
   (or (@(:my-vars solver) n)
-      (throw (IllegalAccessException. (str "var with name \"" n
-                                           "\" is referenced to,"
-                                           " but not declared "
-                                           "anywhere in the problem")))))
+      (throw (IllegalAccessException. (str "var with name " n
+                                           " doesn't have a corresponding "
+                                           "\"$in\" call in the top-level"
+                                           " of the problem")))))
 
 (defn- get-val
   [v]
@@ -92,51 +127,58 @@
 
 (defn- problem->solver
   [problem]
-  (let [problem (concat (var-declarations problem)
-                        (without-var-declarations problem)) ; dig for the var declarations and put them at the front
+  (let [problem (concat (top-level-var-declarations problem)
+                        (without-top-level-var-declarations problem)) ; dig for the var declarations and put them at the front
         s (solver)]
     (doseq [i problem
             :let [i (eval-constraint-expr i s)]]
       (when (instance? Constraint i)
         (constrain! s i)))
+    (let [vars (vals @(:my-vars s))
+          strategy (ISF/firstFail_InDomainMin (into-array IntVar vars))]
+      (.set (:csolver s) ^AbstractStrategy strategy))
     s))
 
 (defn- solve!
   [solver & args]
   (let [args (apply hash-map args)
         n-atom (:n-solutions solver)
-        solver (:csolver solver)]
+        csolver (:csolver solver)]
     (cond
-      (:maximize args) (do (.findOptimalSolution solver ResolutionPolicy/MAXIMIZE (eval-constraint-expr solver (:maximize args)))
+      (:maximize args) (do (.findOptimalSolution csolver ResolutionPolicy/MAXIMIZE (eval-constraint-expr (:maximize args) solver))
                          (swap! n-atom inc)
                          true)
-      (:minimize args) (do (.findOptimalSolution solver ResolutionPolicy/MINIMIZE (eval-constraint-expr solver (:minimize args)))
+      (:minimize args) (do (.findOptimalSolution csolver ResolutionPolicy/MINIMIZE (eval-constraint-expr (:minimize args) solver))
                          (swap! n-atom inc)
                          true)
       :else (if (= @n-atom 0)
-              (and (.findSolution solver)
+              (and (.findSolution csolver)
                    (swap! n-atom inc)
                    true)
-              (and (.nextSolution solver)
+              (and (.nextSolution csolver)
                    (swap! n-atom inc)
                    true)))))
 
 (defn solution*
   [solver & args]
-  (let [solved? (apply solve! solver args)]
-    (when solved?
-      (solution-map solver (dec @(:n-solutions solver))))))
+  (when (apply solve! solver args)
+    (solution-map solver (dec @(:n-solutions solver)))))
 
 (defn solution
   "Solves the problem using the specified constraints and returns a map from variable names to their values (or nil if there is no solution).
 Keyword arguments:
 - :maximize <var> - finds the solution maximizing the given variable.
 - :minimize <var> - finds the solution minimizing the given variable.
-When optimizing a variable, if the problem is infeasible, a solution will be found anyway that bypasses some or all of the constraints.
-
-Note: returned solution maps have the metadata {:solution <n>} denoting that it is the nth solution found (starting with 0)."
+- :feasible true - optimizes time by guaranteeing that the problem is feasible before trying to maximize/minimize a variable.
+Note: returned solution maps have the metadata {:loco/solution <n>} denoting that it is the nth solution found (starting with 0)."
   [problem & args]
-  (apply solution* (problem->solver problem) args))
+  (let [hargs (apply hash-map args)]
+    (cond
+      (:feasible hargs) (apply solution* (problem->solver problem) args)
+      (or (:minimize hargs)
+          (:maximize hargs)) (and (solve! (problem->solver problem))
+                                  (apply solution* (problem->solver problem) args))
+      :else (apply solution* (problem->solver problem) args))))
 
 (defn solutions
   "Solves the solver using the constraints and returns a lazy seq of maps (for each solution) from variable names to their values."
