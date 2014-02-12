@@ -5,9 +5,9 @@
 
 (deftest basic-test
   (-> (solutions
-        [($int :x 1 3)
-         ($int :y 1 3 :bounded)
-         ($int :z [1 3 2])
+        [($in :x 1 3)
+         ($in :y 1 3 :bounded)
+         ($in :z [1 3 2])
          ($= :x :y)
          ($= :y :z)])
     (= '({:x 1 :y 1 :z 1} {:x 2 :y 2 :z 2} {:x 3 :y 3 :z 3}))
@@ -15,9 +15,9 @@
 
 (deftest arithmetic-test
   (-> (solutions
-        [($int :x -5 5)
-         ($int :y -5 5)
-         ($int :z -5 5)
+        [($in :x -5 5)
+         ($in :y -5 5)
+         ($in :z -5 5)
          ($= ($+ :x :y) 5)
          ($= ($- :x :z) 2)
          ($= ($* :y :z) 2)])
@@ -27,9 +27,9 @@
 
 (deftest minmax-test
   (-> (solutions
-        [($int :x -5 5)
-         ($int :y -5 5)
-         ($int :z -5 5)
+        [($in :x -5 5)
+         ($in :y -5 5)
+         ($in :z -5 5)
          ($= ($min :x :y :z) :x)
          ($= ($max :x :y :z) :z)
          ($= :x -5)
@@ -37,9 +37,9 @@
     (= '({:x -5 :y -5 :z -5}))
     is)
   (-> (solutions
-        [($int :x 1 5)
-         ($int :y 2 6)
-         ($int :z 3 7)
+        [($in :x 1 5)
+         ($in :y 2 6)
+         ($in :z 3 7)
          ($= ($min :x 5) 5)
          ($= ($max :z 3) 3)
          ($= :x :y)])
@@ -48,9 +48,9 @@
 
 (deftest mod-scalar-test
   (-> (solutions
-        [($int :x 1 5)
-         ($int :y 1 5)
-         ($int :z 1 5)
+        [($in :x 1 5)
+         ($in :y 1 5)
+         ($in :z 1 5)
          ($= ($mod :x :y) 4)
          ($= ($scalar [:x :y :z] '(1 1 -2)) 3)])
     (= '({:x 4 :y 5 :z 3}))
@@ -58,9 +58,9 @@
 
 (deftest eq-ineq-test
   (-> (solutions
-        [($int :x 1 5)
-         ($int :y 1 5)
-         ($int :z 1 5)
+        [($in :x 1 5)
+         ($in :y 1 5)
+         ($in :z 1 5)
          ($= :z 2)
          ($< :x :y)
          ($<= :y :z)
@@ -73,7 +73,7 @@
 
 (deftest logic-test
   (-> (solutions
-        [($int :x [1])
+        [($in :x [1])
          ($true)
          ($not ($false))
          ($not ($not ($true)))
@@ -94,7 +94,7 @@
 
 (deftest reify-test
   (-> (solutions
-        [($int :x 0 1)
+        [($in :x 0 1)
          ($= ($reify ($true)) :x)
          ($= ($reify ($false)) ($- 1 :x))])
     (= '({:x 1}))
@@ -102,9 +102,9 @@
 
 (deftest all-different-test
   (-> (solutions
-        [($int :x 0 1)
-         ($int :y [1])
-         ($int :z 1 2)
+        [($in :x 0 1)
+         ($in :y [1])
+         ($in :z 1 2)
          ($all-different? :x :y :z)
          ($not ($all-different? :x :x))])
     (= '({:x 0 :y 1 :z 2}))
@@ -112,11 +112,11 @@
 
 (deftest circuit-test
   (-> (solution
-        [($int :a 0 4)
-         ($int :b [0])
-         ($int :c 0 4)
-         ($int :d 0 4)
-         ($int :e 0 4)
+        [($in :a 0 4)
+         ($in :b [0])
+         ($in :c 0 4)
+         ($in :d 0 4)
+         ($in :e 0 4)
          ($circuit? [:a :b :c :d :e])])
     (as-> sol
           (let [a [:a :b :c :d :e]
@@ -131,11 +131,11 @@
             (is (= (count (distinct [v w x y z])) 5)))))
   ;testing offset
   (-> (solution
-        [($int :a 1 5)
-         ($int :b [1])
-         ($int :c 1 5)
-         ($int :d 1 5)
-         ($int :e 1 5)
+        [($in :a 1 5)
+         ($in :b [1])
+         ($in :c 1 5)
+         ($in :d 1 5)
+         ($in :e 1 5)
          ($circuit? [:a :b :c :d :e] 1)])
     (as-> sol
           (let [a [:a :b :c :d :e]
@@ -151,39 +151,58 @@
 
 (deftest nth-test
   (-> (solutions
-        [($int :a [5])
-         ($int :b [5])
-         ($int :c [2])
-         ($int :d [5])
-         ($int :e [5])
-         ($int :x 0 4)
+        [($in :a [5])
+         ($in :b [5])
+         ($in :c [2])
+         ($in :d [5])
+         ($in :e [5])
+         ($in :x 0 4)
          ($= ($nth [:a :b :c :d :e] :x) :x)])
     (as-> s (and (= (count s) 1)
                  (= ((first s) :x) 2)))
     is)
   (-> (solutions
-        [($int :a [5])
-         ($int :b [5])
-         ($int :c [3])
-         ($int :d [5])
-         ($int :e [5])
-         ($int :x 0 4)
+        [($in :a [5])
+         ($in :b [5])
+         ($in :c [3])
+         ($in :d [5])
+         ($in :e [5])
+         ($in :x 0 4)
          ($= ($nth [:a :b :c :d :e] :x 1) :x)])
     (as-> s (and (= (count s) 1)
                  (= ((first s) :x) 3)))
     is))
 
 (deftest automaton-test
-  (let [a (automaton "(1|2)3*(4|5)")]
+  (let [regex "(1|2)3*(4|5)"]
     (-> (solutions
-          [($int :a [1])
-           ($int :b [2])
-           ($int :c [3])
-           ($int :d [4])
-           ($int :e [5])
-           ($satisfies-automaton? a [:a :d])
-           ($satisfies-automaton? a [:a :c :c :c :d])
-           ($not ($satisfies-automaton? a [:a :b :c :c :c :d]))])
+          [($in :a [1])
+           ($in :b [2])
+           ($in :c [3])
+           ($in :d [4])
+           ($in :e [5])
+           ($regex regex [:a :d])
+           ($regex regex [:a :c :c :c :d])
+           ($not ($regex regex [:a :b :c :c :c :d]))])
       count
       (= 1)
       is)))
+
+(deftest cardinality-test
+  (-> (solutions
+        [($in :a 1 5)
+         ($in :b 1 5)
+         ($in :c 1 5)
+         ($in :d 1 5)
+         ($in :e 1 5)
+         ($in :ones 1 5)
+         ($in :twos 1 5)
+         ($cardinality [:a :b :c :d :e] {1 :ones 2 :twos})])
+    (as-> ms
+          (doseq [m ms]
+            (-> m
+              (map [:a :b :c :d :e])
+              frequencies
+              (map [1 2])
+              (= (map m [:ones :twos]))
+              is)))))

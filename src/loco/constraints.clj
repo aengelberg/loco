@@ -570,13 +570,17 @@ Hint: make the offset 1 when using a 1-based list."
   [regex list-of-vars]
   {:type :regex
    :vars list-of-vars
-   :regex regex})
+   :auto {:type :automaton :str regex :id (id)}})
+(defmethod eval-constraint-expr* :automaton
+  [{regex :str} solver]
+  (FiniteAutomaton. regex))
 (defmethod eval-constraint-expr* :regex
-  [{list-of-vars :vars regex :regex} solver]
+  [{list-of-vars :vars auto :auto} solver]
   (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
-        list-of-vars (map (partial to-int-var solver) list-of-vars)]
+        list-of-vars (map (partial to-int-var solver) list-of-vars)
+        auto (eval-constraint-expr auto solver)]
     (ICF/regular (into-array IntVar list-of-vars)
-                 (FiniteAutomaton. regex))))
+                 auto)))
 
 (defn $cardinality
   "Takes a list of variables, and a frequency map (from numbers to frequencies), constrains

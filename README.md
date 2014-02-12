@@ -119,55 +119,61 @@ Here is a complete list of all of the constraints available to you.
 
 #### Numeric Constraints
 
-- <code>$+</code> - given a mixture of variables / numbers, returns the sum.
-- <code>$-</code> - given a mixture of variables / numbers, returns <code>X - Y - Z - ...</code>,
-or <code>-X</code> if only one argument is given.
-- <code>$*</code> - given two arguments (one of which is allowed to be a constant >= -1), returns the product.
-- <code>$min</code> - returns the minimum of several arguments.
-- <code>$max</code> - returns the maximum of several arguments.
-- <code>$mod</code> - given two arguments X and Y, returns X mod Y.
-- <code>$scalar</code> - given a list of variables (X, Y, Z, ...) and a list of integer coefficients (a, b, c, ...)
-returns <code>aX + bY + cZ + ...</code>.
+- `$+` - given a mixture of variables / numbers, returns the sum.
+- `$-` - given a mixture of variables / numbers, returns `X - Y - Z - ...`,
+or `-X` if only one argument is given.
+- `$*` - given two arguments (one of which is allowed to be a constant >= -1), returns the product.
+- `$min` - returns the minimum of several arguments.
+- `$max` - returns the maximum of several arguments.
+- `$mod` - given two arguments X and Y, returns X mod Y.
+- `$scalar` - given a list of variables (X, Y, Z, ...) and a list of integer coefficients (a, b, c, ...)
+returns `aX + bY + cZ + ...`.
 
-- <code>$=, $<, $>, $<=, $>=, $!=</code> - constraints that specify equality/inequality between two or more arguments.
+- `$=, $<, $>, $<=, $>=, $!=` - constraints that specify equality/inequality between two or more arguments.
 Calling these on more than one argument will return a composition of multiple constraints (which collectively have
 same functionality, but might be less efficient then you'd like).
 
 #### Logical Constraints
 
-- <code>$and</code> - given zero or more constraints, returns another constraint that is the "and" of the subconstraints,
+- `$and` - given zero or more constraints, returns another constraint that is the "and" of the subconstraints,
 i.e. it is true iff all of the subconstraints is true.
-- <code>$or</code> - given zero or more constraints, returns another constraint that is the "or" of the subconstraints,
+- `$or` - given zero or more constraints, returns another constraint that is the "or" of the subconstraints,
 i.e. it is true iff at least one of the subconstraints is true.
-- <code>$not</code> - given one constraint C, returns another constraint that is the "not" of C, i.e. it is true
+- `$not` - given one constraint C, returns another constraint that is the "not" of C, i.e. it is true
 iff C is false.
-- <code>$true, $false</code> - takes no arguments, returns an "always true" or an "always false" constraint, respectively.
-- <code>$if</code> - takes an "if", a "then", and optionally an "else", and returns an implies statement.
+- `$true, $false` - takes no arguments, returns an "always true" or an "always false" constraint, respectively.
+- `$if` - takes an "if", a "then", and optionally an "else", and returns an implies statement.
 Given P and Q, returns P => Q, i.e. if P is true, Q is true (but not necessarily the other direction).
 Given P, Q, and R, returns (P => Q) ^ (~P => R).
-- <code>$cond</code> - takes several if-then pairs (as one would use in <code>cond</code>), and composes together
-several <code>$if</code> constraints. The final "else" clause can be specified with <code>:else</code> (like in <code>cond</code>),
-or put as the last argument (like in <code>case</code> and <code>condp</code>).
+- `$cond` - takes several if-then pairs (as one would use in `cond`), and composes together
+several `$if` constraints. The final "else" clause can be specified with `:else` (like in `cond`),
+or put as the last argument (like in `case` and `condp`).
 
 #### Global Constraints
 
 These constraints look for meta-relationships between multiple variables.
 
-- <code>$reify</code> - given a constraint C, will generate a boolean var V, such that V = 1 iff C.
-- <code>$all-different?</code> - a constraint that specifies that several variables must end up with different values.
-- <code>$circuit?</code> - a constraint that specifies that a given list L is a circuit, i.e. each item in the list
-contains the index of the next item in the circuit. For example, <code>[1 2 3 4 0]</code> is a circuit because
-<code>L[0]</code> contains 1, <code>L[1]</code> contains 2, <code>L[2]</code> contains 3, and if you follow the chain you'll
+- `$reify` - given a constraint C, will generate a boolean var V, such that V = 1 iff C.
+- `$all-different?` - a constraint that specifies that several variables must end up with different values.
+- `$circuit?` - a constraint that specifies that a given list L is a circuit, i.e. each item in the list
+contains the index of the next item in the circuit. For example, `[1 2 3 4 0]` is a circuit because
+`L[0]` contains 1, `L[1]` contains 2, `L[2]` contains 3, and if you follow the chain you'll
 eventually visit every index once. You can also pass in an offset number to add to the indices (e.g. if you want to make the
 array one-based).
-- <code>$nth</code> - given a list L and an index i (a variable), will generate another variable that equals <code>L[i]</code>.
-- <code>$regex</code> - given a rudimentary regex and a list of variables, constrains that said variables in sequence
-must follow the regex.
-The special characters of a regex are parentheses (grouping), asterisk (zero or more), plus (one or more), question mark (zero or one),
-and bar (alternation).
-Terminals in this style of regex are all numbers (so they can be assigned to int-vars). A non-special character is treated as its
+- `$nth` - given a list L and an index i (a variable), will generate another variable that equals `L[i]`.
+- `$regex` - given a rudimentary regex and a list of variables, constrains that said variables in sequence
+must follow the regex. Terminals in this style of regex are all numbers (so they can be assigned to int-vars). A non-special character is treated as its
 unicode number, or if it is a digit from 0-9, it is treated as the number itself. To write 10, for instance, you would want
-to write `\u000A` (the character with the hex value for 10).
+to write `\u000A` (the character with the hex value for 10). Here is a list of special forms you can put in the regex.
+ - `(...)` - grouping
+ - `a|b` - alternation / or
+ - `a*` - zero or more
+ - `a+` - one or more
+ - `a?` - zero or one
+ - `[abc]` - one of several characters
+ - `[a-z]` - character range
+ - `\( \[ \* etc.` - escape special character
+
 Whitespace characters are also treated as unicode numbers; they are not ignored by the parser.
 
 ### Finding solutions
@@ -175,36 +181,51 @@ Whitespace characters are also treated as unicode numbers; they are not ignored 
 It's no fun to set up your variables and constraints and then not have a way to find the solution. There are a couple
 ways to find solutions:
 
-The first way is to call <code>solution</code>, which takes just a sequence of constraints.
+The first way is to call `solution`, which takes just a sequence of constraints.
 It returns a solution map, whose keys are variable names, and whose values are the values of the variables.
 
-	(solution [($int :x 1 5)
-	           ($int :y 1 5)
-	           ($= :x ($+ :y 4))]
+	(solution [($in :x 1 5)
+	           ($in :y 1 5)
+	           ($= :x ($+ :y 4))])
 	=> {:x 5, :y 1}
 
-You can also call <code>solution</code> with keyword arguments to specify the optimization of a given variable
+You can also call `solution` with keyword arguments to specify the optimization of a given variable
 (or arithmetic expression).
 
-	(solution [($int :x 1 5)
-	           ($int :y 1 5)]
+	(solution [($in :x 1 5)
+	           ($in :y 1 5)]
 	          :maximize ($- :x :y))
 	=> {:x 5, :y 1}
 
 When maximing or minimizing a variable/expression, the solver must be run *twice*, once to establish that the problem is feasible (i.e., has at least one solution), and then a second time to optimize the result.  If you are confident that your model has a solution, you can save time by calling the `solution` function with `:feasible true`, as follows:
 
-	(solution [($int :x 1 5)
-	           ($int :y 1 5)]
+	(solution [($in :x 1 5)
+	           ($in :y 1 5)]
 	          :maximize ($- :x :y)
 			  :feasible true)
 	=> {:x 5, :y 1}
 
-Finally, you can get a lazy sequence of ALL of the solutions by calling <code>solutions</code>:
+You can get a lazy sequence of ALL of the solutions by calling `solutions`:
 
-	(solutions [($int :x 1 5)
-	            ($int :y 1 5)
-	            ($= :x :y)]
+	(solutions [($in :x 1 5)
+	            ($in :y 1 5)
+	            ($= :x :y)])
 	=> ({:x 1, :y 1}, {:x 2, :y 2}, {:x 3, :y 3}, {:x 4, :y 4}, {:x 5, :y 5})
+
+To time-out the solution early, use the `:timeout` argument. After the specified amount of milliseconds,
+- if calling `solution`, returns `nil`;
+- if calling `solution` with a `:minimize` or `:maximize` keyword, returns the best solution found so far;
+- if calling `solutions`, ends the lazy sequence early.
+
+Note that this timeout is not a guarantee -- the timer is only checked between propagations, which usually but not always
+results in a punctual termination.
+
+	(solution [($in :x 1 10)
+	           ($in :y 1 10)
+	           ($= :x :y)]
+	           :maximize :x
+	           :timeout 1000)   ; timeout after 1 second (pretend it's a super hard problem)
+	=> {:x 7, :y 7}
 
 ## About Loco
 

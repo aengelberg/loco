@@ -4,7 +4,8 @@
            solver.ResolutionPolicy
            solver.constraints.Constraint
            (solver.search.strategy ISF
-                                   strategy.AbstractStrategy)))
+                                   strategy.AbstractStrategy)
+           (solver.search.loop.monitors SMF)))
 
 (defn- namey?
   [x]
@@ -140,10 +141,11 @@ and returns a list of variable declarations"
     s))
 
 (defn- solve!
-  [solver & args]
-  (let [args (apply hash-map args)
-        n-atom (:n-solutions solver)
+  [solver args]
+  (let [n-atom (:n-solutions solver)
         csolver (:csolver solver)]
+    (when (:timeout args)
+      (SMF/limitTime (:csolver s) (long (:timeout args))))
     (cond
       (:maximize args) (do (.findOptimalSolution csolver ResolutionPolicy/MAXIMIZE (eval-constraint-expr (:maximize args) solver))
                          (swap! n-atom inc)
@@ -160,8 +162,8 @@ and returns a list of variable declarations"
                    true)))))
 
 (defn solution*
-  [solver & args]
-  (when (apply solve! solver args)
+  [solver args]
+  (when (solve! solver args)
     (solution-map solver (dec @(:n-solutions solver)))))
 
 (defn solution
@@ -170,19 +172,28 @@ Keyword arguments:
 - :maximize <var> - finds the solution maximizing the given variable.
 - :minimize <var> - finds the solution minimizing the given variable.
 - :feasible true - optimizes time by guaranteeing that the problem is feasible before trying to maximize/minimize a variable.
+- :timeout <number> - stops after a certain amount of milliseconds (returns nil, or best solution so far when min/maxing a variable)
 Note: returned solution maps have the metadata {:loco/solution <n>} denoting that it is the nth solution found (starting with 0)."
   [problem & args]
-  (let [hargs (apply hash-map args)]
+  (let [args (apply hash-map args)]
     (cond
-      (:feasible hargs) (apply solution* (problem->solver problem) args)
-      (or (:minimize hargs)
-          (:maximize hargs)) (and (solve! (problem->solver problem))
-                                  (apply solution* (problem->solver problem) args))
-      :else (apply solution* (problem->solver problem) args))))
+      (:feasible args) (solution* (problem->solver problem) args)
+      (or (:minimize args)
+          (:maximize args)) (and (solve! (problem->solver problem) {})
+                                 (solution* (problem->solver problem) args))
+      :else (solution* (problem->solver problem) args))))
 
 (defn solutions
-  "Solves the solver using the constraints and returns a lazy seq of maps (for each solution) from variable names to their values."
-  [problem]
-  (let [solver (problem->solver problem)]
+  "Solves the solver using the constraints and returns a lazy seq of maps (for each solution) from variable names to their values.
+Keyword arguments:
+- :timeout <number> - the lazy sequence ends prematurely if the timer exceeds a certain number of milliseconds.
+(note: the clock starts ticking when you call 'first' on the resulting lazy-seq. I recommend calling 'doall' to avoid erratic lazy behavior.)"
+  [problem & args]
+  (let [args (apply hash-map args)
+        timeout (:timeout args)
+        args (dissoc args :timeout)
+        solver (problem->solver problem)]
+    (when stop-at
+      (SMF/limitTime (:csolver solver) stop-at))
     (take-while identity
-                (repeatedly #(solution* solver)))))
+                (repeatedly #(solution* solver args)))))
