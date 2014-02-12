@@ -224,7 +224,7 @@ results in a punctual termination.
 	           ($in :y 1 10)
 	           ($= :x :y)]
 	           :maximize :x
-	           :timeout 1000)   ; timeout after 1 second (pretend it's a super hard problem)
+	           :timeout 1000)   ; timeout after 1 second. (pretend this is a super hard problem that takes a few seconds)
 	=> {:x 7, :y 7}
 
 ## About Loco
