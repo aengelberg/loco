@@ -145,7 +145,7 @@ and returns a list of variable declarations"
   (let [n-atom (:n-solutions solver)
         csolver (:csolver solver)]
     (when (:timeout args)
-      (SMF/limitTime (:csolver s) (long (:timeout args))))
+      (SMF/limitTime (:csolver solver) (long (:timeout args))))
     (cond
       (:maximize args) (do (.findOptimalSolution csolver ResolutionPolicy/MAXIMIZE (eval-constraint-expr (:maximize args) solver))
                          (swap! n-atom inc)
@@ -193,7 +193,7 @@ Keyword arguments:
         timeout (:timeout args)
         args (dissoc args :timeout)
         solver (problem->solver problem)]
-    (when stop-at
-      (SMF/limitTime (:csolver solver) stop-at))
+    (when timeout
+      (SMF/limitTime (:csolver solver) timeout))
     (take-while identity
                 (repeatedly #(solution* solver args)))))
