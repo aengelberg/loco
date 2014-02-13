@@ -25,6 +25,14 @@
     (= #{{:z 1, :y 2, :x 3} {:z 2, :y 1, :x 4}})
     is))
 
+(deftest abs-test
+  (-> (solutions
+        [($in :x -5 5)
+         ($= ($abs :x) 2)])
+    set
+    (= #{{:x -2} {:x 2}})
+    is))
+
 (deftest minmax-test
   (-> (solutions
         [($in :x -5 5)

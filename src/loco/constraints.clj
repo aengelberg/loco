@@ -121,6 +121,7 @@ Possible arglist examples:
      :can-optimize-eq (if (empty? more)
                         #{}
                         #{:= :< :> :<= :>= :!=})}))
+
 (defmethod eval-constraint-expr* :+
   [{args :args :as m} solver]
   (if (:optimizing-eq m)
@@ -296,6 +297,24 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
           Z (make-int-var solver 0 (max (dec Ymax) 0))]
       (constrain! solver (ICF/mod X Y Z))
       Z)))
+
+(defn $abs
+  "Given a variable X, returns the absolute value of X, or |X|."
+  [X]
+  {:type :abs
+   :arg X
+   :id (id)
+   :can-optimize-eq #{:=}})
+
+(defmethod eval-constraint-expr* :abs
+  [{X :arg Y? :eq-arg} solver]
+  (let [X (eval-constraint-expr X solver)
+        X (to-int-var solver X)]
+    (if Y?
+      (let [Y (eval-constraint-expr Y? solver)
+            Y (to-int-var solver Y)]
+        (ICF/absolute Y X))
+      (VF/abs X))))
 
 (defn $scalar
   "Given a list of variables X, Y, Z, etc. and a list of number coefficients a, b, c, etc. returns a new variable constrained to equal aX + bY + cZ ..."
