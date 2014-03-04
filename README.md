@@ -2,7 +2,7 @@
 
 Loco is a *Constraint Programming* library for Clojure.  Loco provides a fully *declarative, functional interface* to the Java library Choco.
 
-	[loco "0.1.0-SNAPSHOT"]
+	[loco "0.1.0"]
 
 ## What is Constraint Programming?
 
