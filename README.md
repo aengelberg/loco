@@ -242,6 +242,8 @@ Alex Engelberg is the author and maintainer of the Loco library.  Issues, exampl
 
 Special thanks to the Seattle Clojure group (Seajure), who listened as I explained an early iteration of Loco and nudged me in the direction of being fully declarative.
 
+Also, special thanks to Charles Prud'homme, a maintainer of Choco, for permission to create a Clojure spin-off, as well as additional guidance with some Choco features.
+
 ## License
 
 Copyright © 2014
