@@ -128,6 +128,7 @@ or `-X` if only one argument is given.
 - `$mod` - given two arguments X and Y, returns X mod Y.
 - `$scalar` - given a list of variables (X, Y, Z, ...) and a list of integer coefficients (a, b, c, ...)
 returns `aX + bY + cZ + ...`.
+- `$abs` - given a variable X, returns the absolute value of X.
 
 - `$=, $<, $>, $<=, $>=, $!=` - constraints that specify equality/inequality between two or more arguments.
 Calling these on more than one argument will return a composition of multiple constraints (which collectively have
@@ -161,10 +162,12 @@ contains the index of the next item in the circuit. For example, `[1 2 3 4 0]` i
 eventually visit every index once. You can also pass in an offset number to add to the indices (e.g. if you want to make the
 array one-based).
 - `$nth` - given a list L and an index i (a variable), will generate another variable that equals `L[i]`.
-- `$regex` - given a rudimentary regex and a list of variables, constrains that said variables in sequence
-must follow the regex. Terminals in this style of regex are all numbers (so they can be assigned to int-vars). A non-special character is treated as its
-unicode number, or if it is a digit from 0-9, it is treated as the number itself. To write 10, for instance, you would want
-to write `\u000A` (the character with the hex value for 10). Here is a list of special forms you can put in the regex.
+- `$regex` - given a rudimentary regular expression and a list of variables, constrains that said variables in sequence
+must follow the regex. Values (non-terminals) in the regex are represented as characters, though are reflected in the int-vars
+as the ASCII values. The exception is that digit characters are reflected as the digits themselves.
+Example: `($regex "a5" [:x :y]) => {:x 97, :y 5})`. Here is a more technical list of the syntax of the regular expression.
+ - any character - the ASCII value of the character
+ - `0` to `9` - the number itself
  - `(...)` - grouping
  - `a|b` - alternation / or
  - `a*` - zero or more

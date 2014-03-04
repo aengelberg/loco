@@ -141,6 +141,9 @@ Possible arglist examples:
                     mins (map #(.getLB ^IntVar %) vars)
                     maxes (map #(.getUB ^IntVar %) vars)
                     sum-var (make-int-var solver (apply + mins) (apply + maxes))
+                    vars (try (into-array BoolVar vars)
+                           (catch Exception e
+                             (into-array IntVar vars)))
                     ]
                 (constrain! solver (ICF/sum (into-array IntVar vars) sum-var))
                 sum-var)))))
@@ -589,7 +592,7 @@ Hint: make the offset 1 when using a 1-based list."
   [regex list-of-vars]
   {:type :regex
    :vars list-of-vars
-   :auto {:type :automaton :str regex :id (id)}})
+   :auto {:type :automaton :str regex :id (gensym (hash regex))}})
 (defmethod eval-constraint-expr* :automaton
   [{regex :str} solver]
   (FiniteAutomaton. regex))
