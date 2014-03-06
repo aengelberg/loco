@@ -162,6 +162,10 @@ contains the index of the next item in the circuit. For example, `[1 2 3 4 0]` i
 eventually visit every index once. You can also pass in an offset number to add to the indices (e.g. if you want to make the
 array one-based).
 - `$nth` - given a list L and an index i (a variable), will generate another variable that equals `L[i]`.
+- `$cardinality` - takes a list of variables, and a frequency map with numbers as keys, and variables/numbers as values. Returns a constraint
+that ensures that for each k,v pair in the map, k appears v times in the list of variables.
+Example: `($cardinality [:a :b :c :d] {1 :how-many-ones, 2 :how-many-twos})` could yield a solution `{:a 1, :b 1, :c 2, :d 3, :how-many-ones 2, :how-many-twos 1}`.
+Also takes an optional keyword argument, `:closed true` (default false), which ensures that the list ONLY contains keys that are in the frequency map.
 - `$regex` - given a rudimentary regular expression and a list of variables, constrains that said variables in sequence
 must follow the regex. Values (non-terminals) in the regex are represented as characters, though are reflected in the int-vars
 as the ASCII values. The exception is that digit characters are reflected as the digits themselves.
