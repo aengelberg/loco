@@ -19,7 +19,7 @@ This approach tests every possible combination of x and y.  For this simple exam
 
 A Constraint Programming (CP) engine uses a very specific strategy to search for the solutions in an extremely efficient manner.  First, the engine performs a step called "constraint propagation", in which it uses all the constraints to narrow down the possiblities for each variable.  For example, in this case, it is impossible for x to be 1.  Once everything has been narrowed down as much as possible, the engine picks a variable with the smallest number of possibilities and starts taking cases.  Within each case, it repeats the process of constraint propagation and then taking further subcases if necessary.  For many problems, this process eliminates an astonishing number of cases in a way that seems almost intelligent, reaching a solution in a very short amount of time.
 
-Many CP engines are imperative in nature.  You create some mutable object that tracks the state of all the variables.  You add information about the variables and add constraints to the object.  Then, you kick off the solver.  Add the end of the process, you inspect the variables to see what their final state is.
+Many CP engines are imperative in nature.  You create some mutable object that tracks the state of all the variables.  You add information about the variables and add constraints to the object.  Then, you kick off the solver.  At the end of the process, you inspect the variables to see what their final state is.
 
 ### Our first Loco program
 
