@@ -345,8 +345,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
                      (if (< dmin dmax)
                        [dmin dmax]
                        [dmax dmin]))
-          final-min (apply min (map first minmaxes))
-          final-max (apply max (map second minmaxes))
+          final-min (apply + (map first minmaxes))
+          final-max (apply + (map second minmaxes))
           new-var (make-int-var solver final-min final-max)]
       (constrain! solver (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
       new-var)))
