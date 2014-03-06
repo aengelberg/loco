@@ -86,7 +86,11 @@ Every variable must be declared at least once in the model, for example,
 
 	($in :x 1 10)
 
-states that `:x` is an integer ranging from 1 to 10.
+states that `:x` is an integer ranging from 1 to 10. You can also explicitly state the values of a domain, like so:
+
+	($in :x [1 2 3 4 5 6 7 8 9 10])
+
+Creating vars with the former method will be equivalent to the latter method in the long run (as the values are stored explicitly either way). The latter method is less concise but more flexible.
 
 It is common in Constraint Programming to express boolean variables as numbers that can be either 0 or 1.  So to create a boolean variable b:
 
