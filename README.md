@@ -121,18 +121,20 @@ but this is:
 
 Here is a complete list of all of the constraints available to you.
 
+Functions marked with an asterisk return expressions to be nested in other constraints (and don't belong at the top level).
+
 #### Numeric Constraints
 
-- `$+` - given a mixture of variables / numbers, returns the sum.
-- `$-` - given a mixture of variables / numbers, returns `X - Y - Z - ...`,
-or `-X` if only one argument is given.
-- `$*` - given two arguments (one of which is allowed to be a constant >= -1), returns the product.
-- `$min` - returns the minimum of several arguments.
-- `$max` - returns the maximum of several arguments.
-- `$mod` - given two arguments X and Y, returns X mod Y.
-- `$scalar` - given a list of variables (X, Y, Z, ...) and a list of integer coefficients (a, b, c, ...)
+- `$+`* - given a mixture of variables / numbers, returns the sum.
+- `$-`* - given a mixture of variables / numbers, returns `X - Y - Z - ...`,
+or `-X`* if only one argument is given.
+- `$*`* - given two arguments (one of which is allowed to be a constant >= -1), returns the product.
+- `$min`* - returns the minimum of several arguments.
+- `$max`* - returns the maximum of several arguments.
+- `$mod`* - given two arguments X and Y, returns X mod Y.
+- `$scalar`* - given a list of variables (X, Y, Z, ...) and a list of integer coefficients (a, b, c, ...)
 returns `aX + bY + cZ + ...`.
-- `$abs` - given a variable X, returns the absolute value of X.
+- `$abs`* - given a variable X, returns the absolute value of X.
 
 - `$=, $<, $>, $<=, $>=, $!=` - constraints that specify equality/inequality between two or more arguments.
 Calling these on more than one argument will return a composition of multiple constraints (which collectively have
@@ -153,19 +155,19 @@ Given P, Q, and R, returns (P => Q) ^ (~P => R).
 - `$cond` - takes several if-then pairs (as one would use in `cond`), and composes together
 several `$if` constraints. The final "else" clause can be specified with `:else` (like in `cond`),
 or put as the last argument (like in `case` and `condp`).
+- `$reify`* - given a constraint C, will generate a boolean var V, such that V = 1 iff C.
 
 #### Global Constraints
 
 These constraints look for meta-relationships between multiple variables.
 
-- `$reify` - given a constraint C, will generate a boolean var V, such that V = 1 iff C.
 - `$distinct` - a constraint that specifies that several variables must end up with different values.
 - `$circuit` - a constraint that specifies that a given list L is a circuit, i.e. each item in the list
 contains the index of the next item in the circuit. For example, `[1 2 3 4 0]` is a circuit because
 `L[0]` contains 1, `L[1]` contains 2, `L[2]` contains 3, and if you follow the chain you'll
 eventually visit every index once. You can also pass in an offset number to add to the indices (e.g. if you want to make the
 array one-based).
-- `$nth` - given a list L and an index i (a variable), will generate another variable that equals `L[i]`.
+- `$nth`* - given a list L and an index i (a variable), will generate another variable that equals `L[i]`.
 - `$cardinality` - takes a list of variables, and a frequency map with numbers as keys, and variables/numbers as values. Returns a constraint
 that ensures that for each k,v pair in the map, k appears v times in the list of variables.
 Example: `($cardinality [:a :b :c :d] {1 :how-many-ones, 2 :how-many-twos})` could yield a solution `{:a 1, :b 1, :c 2, :d 3, :how-many-ones 2, :how-many-twos 1}`.
