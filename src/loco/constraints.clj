@@ -531,31 +531,40 @@ If no \"else\" clause is specified, it is \"True\" by default."
 
 ;;;;; GLOBAL
 
-(defn $all-different?
+(defn $distinct
   "Given a bunch of int-vars, ensures that all of them have different values, i.e. no two of them are equal."
-  [& vars]
-  {:type :all-different?
+  [vars]
+  {:type :distinct
    :args vars})
-(defmethod eval-constraint-expr* :all-different?
+(defmethod eval-constraint-expr* :distinct
   [{vars :args} solver]
   (let [vars (map #(eval-constraint-expr % solver) vars)]
     (ICF/alldifferent (into-array IntVar vars) "DEFAULT")))
 
-(defn $circuit?
+(defn $all-different?
+  "Deprecated: use $distinct"
+  [& vars]
+  ($distinct vars))
+
+(defn $circuit
   "Given a list of int-vars L, and an optional offset number (default 0), the elements of L define a circuit, where
 (L[i] = j + offset) means that j is the successor of i.
 Hint: make the offset 1 when using a 1-based list."
   ([list-of-vars]
-    ($circuit? list-of-vars 0))
+    ($circuit list-of-vars 0))
   ([list-of-vars offset]
-    {:type :circuit?
+    {:type :circuit
      :vars list-of-vars
      :offset offset}))
-(defmethod eval-constraint-expr* :circuit?
+(defmethod eval-constraint-expr* :circuit
   [{list-of-vars :vars offset :offset} solver]
   (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
         list-of-vars (map (partial to-int-var solver) list-of-vars)]
     (ICF/circuit (into-array IntVar list-of-vars) offset)))
+
+(def $circuit?
+  "Deprecated: use $circuit"
+  $circuit)
 
 (defn $nth
   "Given a list of int-vars L, an int-var i, and an optional offset number (default 0), returns a new int-var constrained to equal L[i], or L[i - offset]."

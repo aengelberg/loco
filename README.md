@@ -159,8 +159,8 @@ or put as the last argument (like in `case` and `condp`).
 These constraints look for meta-relationships between multiple variables.
 
 - `$reify` - given a constraint C, will generate a boolean var V, such that V = 1 iff C.
-- `$all-different?` - a constraint that specifies that several variables must end up with different values.
-- `$circuit?` - a constraint that specifies that a given list L is a circuit, i.e. each item in the list
+- `$distinct` - a constraint that specifies that several variables must end up with different values.
+- `$circuit` - a constraint that specifies that a given list L is a circuit, i.e. each item in the list
 contains the index of the next item in the circuit. For example, `[1 2 3 4 0]` is a circuit because
 `L[0]` contains 1, `L[1]` contains 2, `L[2]` contains 3, and if you follow the chain you'll
 eventually visit every index once. You can also pass in an offset number to add to the indices (e.g. if you want to make the

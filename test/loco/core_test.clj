@@ -113,8 +113,8 @@
         [($in :x 0 1)
          ($in :y [1])
          ($in :z 1 2)
-         ($all-different? :x :y :z)
-         ($not ($all-different? :x :x))])
+         ($distinct [:x :y :z])
+         ($not ($distinct [:x :x]))])
     (= '({:x 0 :y 1 :z 2}))
     is))
 
@@ -125,7 +125,7 @@
          ($in :c 0 4)
          ($in :d 0 4)
          ($in :e 0 4)
-         ($circuit? [:a :b :c :d :e])])
+         ($circuit [:a :b :c :d :e])])
     (as-> sol
           (let [a [:a :b :c :d :e]
                 [v i] (first sol)
@@ -144,7 +144,7 @@
          ($in :c 1 5)
          ($in :d 1 5)
          ($in :e 1 5)
-         ($circuit? [:a :b :c :d :e] 1)])
+         ($circuit [:a :b :c :d :e] 1)])
     (as-> sol
           (let [a [:a :b :c :d :e]
                 [v i] (first sol)
