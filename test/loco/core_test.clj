@@ -214,3 +214,12 @@
               (map [1 2])
               (= (map m [:ones :twos]))
               is)))))
+
+(deftest tricky-test-0-2-1
+  ; testing ($comparison number var)
+  (-> (solutions
+        [($in :a [5])
+         ($in :b 0 1)
+         ($= :b ($reify ($< 0 :a)))])
+    (= '({:a 5 :b 1}))
+    is))

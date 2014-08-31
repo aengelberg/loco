@@ -392,9 +392,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
   (let [op (:eq data)
         X (eval-constraint-expr (:arg1 data) solver)
         Y (eval-constraint-expr (:arg2 data) solver)
-        [X Y] (if (number? X)
-                [Y X]
-                [X Y])]
+        X (to-int-var solver X)
+        Y (to-int-var solver Y)]
     ;(println X Y)
     (ICF/arithm X (name op) Y)))
 
