@@ -2,7 +2,7 @@
 
 Loco is a *Constraint Programming* library for Clojure.  Loco provides a fully *declarative, functional interface* to the Java library Choco.
 
-	[loco "0.2.0"]
+	[loco "0.2.1"]
 
 ## What is Constraint Programming?
 
@@ -128,7 +128,7 @@ Functions marked with an asterisk return expressions to be nested in other const
 - `$+`* - given a mixture of variables / numbers, returns the sum.
 - `$-`* - given a mixture of variables / numbers, returns `X - Y - Z - ...`,
 or `-X`* if only one argument is given.
-- `$*`* - given two arguments (one of which is allowed to be a constant >= -1), returns the product.
+- `$*`* - given two arguments, returns the product. One argument can be a constant number >= -1.
 - `$min`* - returns the minimum of several arguments.
 - `$max`* - returns the maximum of several arguments.
 - `$mod`* - given two arguments X and Y, returns X mod Y.
@@ -137,7 +137,7 @@ returns `aX + bY + cZ + ...`.
 - `$abs`* - given a variable X, returns the absolute value of X.
 
 - `$=, $<, $>, $<=, $>=, $!=` - constraints that specify equality/inequality between two or more arguments.
-Calling these on more than one argument will return a composition of multiple constraints (which collectively have
+Calling these on more than two arguments will return a composition of multiple constraints (which collectively have
 same functionality, but might be less efficient then you'd like).
 
 #### Logical Constraints
@@ -210,7 +210,7 @@ You can also call `solution` with keyword arguments to specify the optimization 
 	          :maximize ($- :x :y))
 	=> {:x 5, :y 1}
 
-When maximing or minimizing a variable/expression, the solver must be run *twice*, once to establish that the problem is feasible (i.e., has at least one solution), and then a second time to optimize the result.  If you are confident that your model has a solution, you can save time by calling the `solution` function with `:feasible true`, as follows:
+When maximing or minimizing a variable/expression, internally the solver will be run *twice*, once to establish that the problem is feasible (i.e., has at least one solution), and then a second time to optimize the result.  If you are confident that your model has a solution, you can save time by calling the `solution` function with `:feasible true`, as follows:
 
 	(solution [($in :x 1 5)
 	           ($in :y 1 5)]
@@ -244,7 +244,7 @@ results in a punctual termination.
 
 Loco was born out of a desire to create a constraint solver that would improve upon core.logic by leveraging an existing Java constraint library to provide better performance and a wider range of constraints.  The first iteration, [CloCoP](http://github.com/aengelberg/clocop), was based upon the JaCoP library, and introduced the "piping" operators, i.e., nested constraints which automatically produce other internal variables.
 
-Shortly after announcing CloCoP, I discovered the Choco library.  I decided to create a new version of CloCoP, based on Choco.  Along the way, I took this as an opportunity to experiment with the modeling API, and eventually moved to a purely declarative approach.  The new API was sufficiently different from CloCoP that it warranted a new name: Loco.
+Shortly after announcing CloCoP, I discovered the Choco library. Choco has a couple of features that makes it slightly better than JaCoP for this situation, such as lazy evaluation of multiple solutions, so I decided to create a new version of CloCoP based on Choco.  Along the way, I took this as an opportunity to experiment with the modeling API, and eventually moved to a purely declarative approach.  The new API was sufficiently different from CloCoP that it warranted a new name: Loco.
 
 ## Credits
 

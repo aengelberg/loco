@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.1-SNAPSHOT
+## 0.2.1
 - fixed bug in which ($comparison number var) would switch the order of the args
 
 ## 0.2.0
