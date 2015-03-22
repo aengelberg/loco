@@ -1,11 +1,12 @@
 (ns loco.core
-  (:import (solver.variables VF IntVar)
-           (solver.exception SolverException)
-           solver.ResolutionPolicy
-           solver.constraints.Constraint
-           (solver.search.strategy ISF
-                                   strategy.AbstractStrategy)
-           (solver.search.loop.monitors SMF)))
+  (:import (org.chocosolver.solver.variables VF IntVar)
+           (org.chocosolver.solver.exception SolverException)
+           (org.chocosolver.solver ResolutionPolicy
+                                   Solver)
+           org.chocosolver.solver.constraints.Constraint
+           (org.chocosolver.solver.search.strategy ISF
+                                                   strategy.AbstractStrategy)
+           (org.chocosolver.solver.search.loop.monitors SMF)))
 
 (defn- namey?
   [x]
@@ -72,7 +73,7 @@ and returns a list of variable declarations"
 (defn- solver
   []
   (->LocoSolver
-    (solver.Solver. (str (gensym "solver")))
+    (Solver. (str (gensym "solver")))
     (atom {})
     (atom {})
     (atom 0)))
@@ -136,8 +137,8 @@ and returns a list of variable declarations"
       (when (instance? Constraint i)
         (constrain! s i)))
     (let [vars (vals @(:my-vars s))
-          strategy (ISF/firstFail_InDomainMin (into-array IntVar vars))]
-      (.set (:csolver s) ^AbstractStrategy strategy))
+          strategy (ISF/minDom_LB (into-array IntVar vars))]
+      (.set (:csolver s) (into-array AbstractStrategy [strategy])))
     s))
 
 (defn- solve!

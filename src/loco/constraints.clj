@@ -1,14 +1,14 @@
 (ns loco.constraints
   (:require [loco.core :as core :refer [eval-constraint-expr
                                         eval-constraint-expr*]])
-  (:import (solver.constraints Arithmetic
-                               ICF
-                               LCF
-                               Constraint)
-           (solver.variables IntVar
-                             BoolVar
-                             VF)
-           solver.constraints.nary.automata.FA.FiniteAutomaton))
+  (:import (org.chocosolver.solver.constraints Arithmetic
+                                               ICF
+                                               LCF
+                                               Constraint)
+           (org.chocosolver.solver.variables IntVar
+                                             BoolVar
+                                             VF)
+           org.chocosolver.solver.constraints.nary.automata.FA.FiniteAutomaton))
 
 (defn- domain-min
   [x]
@@ -492,10 +492,11 @@ An optional \"else\" field can be specified, which must be true if P is false."
 (defmethod eval-constraint-expr* :if
   [{if-this :if then-this :then else-this :else} solver]
   (if-not else-this
-    (LCF/ifThen (eval-constraint-expr if-this solver) (eval-constraint-expr then-this solver))
-    (LCF/ifThenElse (eval-constraint-expr if-this solver)
-                    (eval-constraint-expr then-this solver)
-                    (eval-constraint-expr else-this solver))))
+    (LCF/ifThen_reifiable (eval-constraint-expr if-this solver)
+                          (eval-constraint-expr then-this solver))
+    (LCF/ifThenElse_reifiable (eval-constraint-expr if-this solver)
+                              (eval-constraint-expr then-this solver)
+                              (eval-constraint-expr else-this solver))))
 
 (defn $cond
   "A convenience function for constructing a \"cond\"-like statement out of $if statements.
@@ -525,7 +526,7 @@ If no \"else\" clause is specified, it is \"True\" by default."
   [{C :arg} solver]
   (let [C (eval-constraint-expr C solver)
         V (make-bool-var solver)]
-    (constrain! solver (LCF/reification V C))
+    (LCF/reification V C)
     V))
 
 ;;;;; GLOBAL
