@@ -4,6 +4,8 @@ Loco is a *Constraint Programming* library for Clojure.  Loco provides a fully *
 
 	[loco "0.3.0-SNAPSHOT"]
 
+Loco requires JDK 8.
+
 ## What is Constraint Programming?
 
 Constraint Programming is about solving problems that can be expressed in terms of *integer variables* and *constraints* on those variables.  For example, consider a problem in which variable `x` is an integer ranging from 1 to 6 and `y` is an integer ranging from 3 to 7.  We also know the constraint that `x+y=10`.  What are all the possible values for x and y?
