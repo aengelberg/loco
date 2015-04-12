@@ -210,14 +210,6 @@ You can also call `solution` with keyword arguments to specify the optimization 
 	          :maximize ($- :x :y))
 	=> {:x 5, :y 1}
 
-When maximing or minimizing a variable/expression, internally the solver will be run *twice*, once to establish that the problem is feasible (i.e., has at least one solution), and then a second time to optimize the result.  If you are confident that your model has a solution, you can save time by calling the `solution` function with `:feasible true`, as follows:
-
-	(solution [($in :x 1 5)
-	           ($in :y 1 5)]
-	          :maximize ($- :x :y)
-			  :feasible true)
-	=> {:x 5, :y 1}
-
 You can get a lazy sequence of ALL of the solutions by calling `solutions`:
 
 	(solutions [($in :x 1 5)

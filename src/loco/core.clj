@@ -6,7 +6,8 @@
            org.chocosolver.solver.constraints.Constraint
            (org.chocosolver.solver.search.strategy ISF
                                                    strategy.AbstractStrategy)
-           (org.chocosolver.solver.search.loop.monitors SMF)))
+           (org.chocosolver.solver.search.loop.monitors SMF)
+           (org.chocosolver.util ESat)))
 
 (defn- namey?
   [x]
@@ -141,6 +142,15 @@ and returns a list of variable declarations"
       (.set (:csolver s) (into-array AbstractStrategy [strategy])))
     s))
 
+(defn- feasible?
+  "After the problem has executed, determines whether the problem was feasible"
+  [solver]
+  (let [f (.isFeasible (:csolver solver))]
+    (condp = f
+      ESat/TRUE true
+      ESat/FALSE false
+      ESat/UNDEFINED (throw (Exception. "Solver has not been run yet")))))
+
 (defn- solve!
   [solver args]
   (let [n-atom (:n-solutions solver)
@@ -149,11 +159,13 @@ and returns a list of variable declarations"
       (SMF/limitTime (:csolver solver) (long (:timeout args))))
     (cond
       (:maximize args) (do (.findOptimalSolution csolver ResolutionPolicy/MAXIMIZE (eval-constraint-expr (:maximize args) solver))
-                         (swap! n-atom inc)
-                         true)
+                           (and (feasible? solver)
+                                (swap! n-atom inc)
+                                true))
       (:minimize args) (do (.findOptimalSolution csolver ResolutionPolicy/MINIMIZE (eval-constraint-expr (:minimize args) solver))
-                         (swap! n-atom inc)
-                         true)
+                           (and (feasible? solver)
+                                (swap! n-atom inc)
+                                true))
       :else (if (= @n-atom 0)
               (and (.findSolution csolver)
                    (swap! n-atom inc)
@@ -177,12 +189,7 @@ Keyword arguments:
 Note: returned solution maps have the metadata {:loco/solution <n>} denoting that it is the nth solution found (starting with 0)."
   [problem & args]
   (let [args (apply hash-map args)]
-    (cond
-      (:feasible args) (solution* (problem->solver problem) args)
-      (or (:minimize args)
-          (:maximize args)) (and (solve! (problem->solver problem) {})
-                                 (solution* (problem->solver problem) args))
-      :else (solution* (problem->solver problem) args))))
+    (solution* (problem->solver problem) args)))
 
 (defn solutions
   "Solves the solver using the constraints and returns a lazy seq of maps (for each solution) from variable names to their values.

@@ -215,6 +215,20 @@
               (= (map m [:ones :twos]))
               is)))))
 
+(deftest optimization-test
+  (is (= (solution [($in :x 1 5)]
+                   :maximize :x)
+         {:x 5}))
+  (is (= (solution [($in :x 1 5)]
+                   :minimize :x)
+         {:x 1}))
+  (is (= (solution [($in :x 1 5) ($< :x 0)]
+                   :maximize :x)
+         nil))
+  (is (= (solution [($in :x 1 5) ($< :x 0)]
+                   :minimize :x)
+         nil)))
+
 (deftest tricky-test-0-2-1
   ; testing ($comparison number var)
   (-> (solutions
