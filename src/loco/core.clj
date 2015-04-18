@@ -19,6 +19,10 @@
   []
   (gensym "id"))
 
+(def ^:dynamic *solver*
+  "(internal) Bound to the Loco solver object during problem construction / solving"
+  nil)
+
 (defmulti eval-constraint-expr*
   "Evaluates a map data structure in the correct behavior, typically returning a constraint or a variable."
   (fn [data solver]
@@ -71,7 +75,7 @@ and returns a list of variable declarations"
 (defrecord LocoSolver
   [csolver memo-table my-vars n-solutions])
 
-(defn- solver
+(defn- new-solver
   []
   (->LocoSolver
     (Solver. (str (gensym "solver")))
@@ -115,14 +119,15 @@ and returns a list of variable declarations"
   [data solver]
   (find-int-var solver data))
 
-(defn- solution-map
-  [solver n]
-  (into (with-meta {} {:loco/solution n})
-        (for [[var-name v] @(:my-vars solver)
-              :when (if (keyword? var-name)
-                      (not= (first (name var-name)) \_)
-                      (not= (first (name (first var-name))) \_))]
-          [var-name (get-val v)])))
+(defn- return-next-solution
+  []
+  (let [n (dec @(:n-solutions *solver*))]
+    (into (with-meta {} {:loco/solution n})
+          (for [[var-name v] @(:my-vars *solver*)
+                :when (if (keyword? var-name)
+                        (not= (first (name var-name)) \_)
+                        (not= (first (name (first var-name))) \_))]
+            [var-name (get-val v)]))))
 
 (defn- constrain!
   [solver constraint]
@@ -132,7 +137,7 @@ and returns a list of variable declarations"
   [problem]
   (let [problem (concat (top-level-var-declarations problem)
                         (without-top-level-var-declarations problem)) ; dig for the var declarations and put them at the front
-        s (solver)]
+        s (new-solver)]
     (doseq [i problem
             :let [i (eval-constraint-expr i s)]]
       (when (instance? Constraint i)
@@ -144,26 +149,28 @@ and returns a list of variable declarations"
 
 (defn- feasible?
   "After the problem has executed, determines whether the problem was feasible"
-  [solver]
-  (let [f (.isFeasible (:csolver solver))]
+  []
+  (let [f (.isFeasible (:csolver *solver*))]
     (condp = f
       ESat/TRUE true
       ESat/FALSE false
       ESat/UNDEFINED (throw (Exception. "Solver has not been run yet")))))
 
 (defn- solve!
-  [solver args]
-  (let [n-atom (:n-solutions solver)
-        csolver (:csolver solver)]
+  [args]
+  (let [n-atom (:n-solutions *solver*)
+        csolver (:csolver *solver*)]
     (when (:timeout args)
-      (SMF/limitTime (:csolver solver) (long (:timeout args))))
+      (SMF/limitTime csolver (long (:timeout args))))
     (cond
-      (:maximize args) (do (.findOptimalSolution csolver ResolutionPolicy/MAXIMIZE (eval-constraint-expr (:maximize args) solver))
-                           (and (feasible? solver)
+      (:maximize args) (do (.findOptimalSolution csolver ResolutionPolicy/MAXIMIZE
+                                                 (eval-constraint-expr (:maximize args) *solver*))
+                           (and (feasible?)
                                 (swap! n-atom inc)
                                 true))
-      (:minimize args) (do (.findOptimalSolution csolver ResolutionPolicy/MINIMIZE (eval-constraint-expr (:minimize args) solver))
-                           (and (feasible? solver)
+      (:minimize args) (do (.findOptimalSolution csolver ResolutionPolicy/MINIMIZE
+                                                 (eval-constraint-expr (:minimize args) *solver*))
+                           (and (feasible?)
                                 (swap! n-atom inc)
                                 true))
       :else (if (= @n-atom 0)
@@ -175,9 +182,9 @@ and returns a list of variable declarations"
                    true)))))
 
 (defn solution*
-  [solver args]
-  (when (solve! solver args)
-    (solution-map solver (dec @(:n-solutions solver)))))
+  [args]
+  (when (solve! args)
+    (return-next-solution)))
 
 (defn solution
   "Solves the problem using the specified constraints and returns a map from variable names to their values (or nil if there is no solution).
@@ -188,8 +195,9 @@ Keyword arguments:
 - :timeout <number> - stops after a certain amount of milliseconds (returns nil, or best solution so far when min/maxing a variable)
 Note: returned solution maps have the metadata {:loco/solution <n>} denoting that it is the nth solution found (starting with 0)."
   [problem & args]
-  (let [args (apply hash-map args)]
-    (solution* (problem->solver problem) args)))
+  (binding [*solver* (problem->solver problem)]
+    (let [args (apply hash-map args)]
+      (solution* args))))
 
 (defn solutions
   "Solves the solver using the constraints and returns a lazy seq of maps (for each solution) from variable names to their values.
@@ -197,11 +205,12 @@ Keyword arguments:
 - :timeout <number> - the lazy sequence ends prematurely if the timer exceeds a certain number of milliseconds.
 (note: the clock starts ticking when you call 'first' on the resulting lazy-seq. I recommend calling 'doall' to avoid erratic lazy behavior.)"
   [problem & args]
-  (let [args (apply hash-map args)
+  (let [solver (problem->solver problem)
+        args (apply hash-map args)
         timeout (:timeout args)
-        args (dissoc args :timeout)
-        solver (problem->solver problem)]
+        args (dissoc args :timeout)]
     (when timeout
       (SMF/limitTime (:csolver solver) timeout))
     (take-while identity
-                (repeatedly #(solution* solver args)))))
+                (repeatedly #(binding [*solver* solver]
+                               (solution* args))))))
