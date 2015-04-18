@@ -637,3 +637,36 @@ Example: ($cardinality [:a :b :c :d :e] {1 :ones, 2 :twos} :closed true)
                                        (to-int-var solver
                                                    (eval-constraint-expr v solver))))]
     (ICF/global_cardinality variables values occurrences (boolean closed))))
+
+(defn $knapsack
+  "Takes constant weights / values for a list of pre-defined items, and
+a list of variables representing the amount of each item. Constrains that
+the values of all the items add up to the total-value, while the items'
+weights add up to total-weight.
+
+Example: ($knapsack [3 1 2]    ; weights
+                    [5 6 7]    ; values
+                    [:x :y :z] ; occurrences
+                    :W         ; total weight
+                    :V)        ; total value"
+  [weights values occurrences total-weight total-value]
+  (assert (and (every? integer? weights)
+               (every? integer? values))
+          "$knapsack: weights and values must be collections of constant integers")
+  {:type :knapsack
+   :weights weights
+   :values values
+   :occurrences occurrences
+   :total-weight total-weight
+   :total-value total-value})
+(defmethod eval-constraint-expr* :knapsack
+  [{:keys [weights values occurrences total-weight total-value]} solver]
+  (let [occurrences (for [v occurrences]
+                      (to-int-var solver (eval-constraint-expr v solver)))
+        total-weight (to-int-var solver (eval-constraint-expr total-weight solver))
+        total-value (to-int-var solver (eval-constraint-expr total-value solver))]
+    (ICF/knapsack (into-array IntVar occurrences)
+                  ^IntVar total-weight
+                  ^IntVar total-value
+                  (int-array weights)
+                  (int-array values))))

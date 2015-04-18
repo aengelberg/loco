@@ -5,6 +5,7 @@
 - now depends on Maven Central artifact, which should be more reliable
 - now relies on JDK 8
 - `solution` no longer needs or supports `:feasible` argument
+- added `$knapsack` global constraint
 
 ## 0.2.1
 - fixed bug in which ($comparison number var) would switch the order of the args

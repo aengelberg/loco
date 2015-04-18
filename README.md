@@ -174,10 +174,11 @@ array one-based).
 that ensures that for each k,v pair in the map, k appears v times in the list of variables.
 Example: `($cardinality [:a :b :c :d] {1 :how-many-ones, 2 :how-many-twos})` could yield a solution `{:a 1, :b 1, :c 2, :d 3, :how-many-ones 2, :how-many-twos 1}`.
 Also takes an optional keyword argument, `:closed true` (default false), which ensures that the list ONLY contains keys that are in the frequency map.
+- `$knapsack` - takes a list of weights `w_1, w_2, ...`, a list of values `v_1, v_2, ...`, a list of variables `O_1, O_2, ...`, and variables `W_total` and `V_total`. Constrains that `sum(O_i * w_i) = W_total`, and that `sum(O_i * v_i) = V_total`.
 - `$regex` - given a rudimentary regular expression and a list of variables, constrains that said variables in sequence
 must follow the regex. Values (non-terminals) in the regex are represented as characters, though are reflected in the int-vars
 as the ASCII values. The exception is that digit characters are reflected as the digits themselves.
-Example: `($regex "a5" [:x :y]) => {:x 97, :y 5})`. Here is a more technical list of the syntax of the regular expression.
+Example: `($regex "a5" [:x :y]) => {:x 97, :y 5}`. Here is a more technical list of the syntax of the regular expression.
  - any character - the ASCII value of the character
  - `0` to `9` - the number itself
  - `(...)` - grouping
