@@ -1,6 +1,7 @@
 (ns loco.constraints
   (:require [loco.core :as core :refer [eval-constraint-expr
-                                        eval-constraint-expr*]])
+                                        eval-constraint-expr*
+                                        *solver*]])
   (:import (org.chocosolver.solver.constraints Arithmetic
                                                ICF
                                                LCF
@@ -23,25 +24,25 @@
     (.getUB x)))
 
 (defn make-const-var
-  [solver n]
-  (VF/fixed n (:csolver solver)))
+  [n]
+  (VF/fixed n (:csolver *solver*)))
 
 (defn make-int-var
-  [solver min max]
-  (VF/enumerated (str (gensym "_int-var")) min max (:csolver solver)))
+  [min max]
+  (VF/enumerated (str (gensym "_int-var")) min max (:csolver *solver*)))
 
 (defn make-bool-var
-  [solver]
-  (VF/bool (str (gensym "_bool-var")) (:csolver solver)))
+  []
+  (VF/bool (str (gensym "_bool-var")) (:csolver *solver*)))
 
 (defn- constrain!
-  [solver constraint]
-  (.post (:csolver solver) constraint))
+  [constraint]
+  (.post (:csolver *solver*) constraint))
 
 (defn- to-int-var
-  [solver x]
+  [x]
   (cond
-    (number? x) (make-const-var solver x)
+    (number? x) (make-const-var x)
     (instance? IntVar x) x
     (instance? Constraint x) (throw (IllegalArgumentException. "Expected a variable or a number, but got a constraint"))
     :else (throw (IllegalArgumentException. "Constraint expected an int-var or number"))))
@@ -77,31 +78,31 @@ Possible arglist examples:
     m))
 
 (defmethod eval-constraint-expr* :int-domain
-  [{var-name :name domain :domain} solver]
-  (let [v (eval-constraint-expr var-name solver)]
+  [{var-name :name domain :domain}]
+  (let [v (eval-constraint-expr var-name)]
     (if (map? domain)
       (ICF/member v (:min domain) (:max domain))
       (ICF/member v (int-array (sort (distinct domain)))))))
 
 (defmethod eval-constraint-expr* :int-var
-  [data solver]
+  [data]
   (let [domain-expr (:domain data)
         var-name (:name data)
         real-name (:real-name data)
         v (case [(boolean (:bounded domain-expr)) (sequential? domain-expr)]
             [false false] (VF/enumerated real-name (:min domain-expr) (:max domain-expr)
-                                         (:csolver solver))
+                                         (:csolver *solver*))
             [false true] (VF/enumerated real-name (int-array (sort domain-expr))
-                                        (:csolver solver))
+                                        (:csolver *solver*))
             [true false] (VF/bounded real-name (:min domain-expr) (:max domain-expr)
-                                     (:csolver solver)))]
-    (swap! (:my-vars solver) assoc var-name v)
+                                     (:csolver *solver*)))]
+    (swap! (:my-vars *solver*) assoc var-name v)
     nil))
 
 (defmethod eval-constraint-expr* :bool-var
-  [{var-name :name real-name :real-name} solver]
-  (let [v (VF/bool real-name (:csolver solver))]
-    (swap! (:my-vars solver) assoc var-name v)
+  [{var-name :name real-name :real-name}]
+  (let [v (VF/bool real-name (:csolver *solver*))]
+    (swap! (:my-vars *solver*) assoc var-name v)
     nil))
 
 ;;;;; ARITHMETIC
@@ -123,29 +124,29 @@ Possible arglist examples:
                         #{:= :< :> :<= :>= :!=})}))
 
 (defmethod eval-constraint-expr* :+
-  [{args :args :as m} solver]
+  [{args :args :as m}]
   (if (:optimizing-eq m)
-    (let [args (map #(eval-constraint-expr % solver) args)
-          args (map (partial to-int-var solver) args)]
+    (let [args (map eval-constraint-expr args)
+          args (map to-int-var args)]
       (ICF/sum (into-array IntVar args)
                (name (:optimizing-eq m))
-               (to-int-var solver (eval-constraint-expr (:eq-arg m) solver))))
-    (let [[x y & more] (map #(eval-constraint-expr % solver) args)]
+               (to-int-var (eval-constraint-expr (:eq-arg m)))))
+    (let [[x y & more] (map eval-constraint-expr args)]
       (cond
         (and (empty? more)
              (number? y)) ($+view x y)
         (and (empty? more)
              (number? x)) ($+view y x)
         :else (let [vars (list* x y more)
-                    vars (map (partial to-int-var solver) vars) ; converting numbers to int-views
+                    vars (map to-int-var vars) ; converting numbers to int-views
                     mins (map #(.getLB ^IntVar %) vars)
                     maxes (map #(.getUB ^IntVar %) vars)
-                    sum-var (make-int-var solver (apply + mins) (apply + maxes))
+                    sum-var (make-int-var (apply + mins) (apply + maxes))
                     vars (try (into-array BoolVar vars)
                            (catch Exception e
                              (into-array IntVar vars)))
                     ]
-                (constrain! solver (ICF/sum (into-array IntVar vars) sum-var))
+                (constrain! (ICF/sum (into-array IntVar vars) sum-var))
                 sum-var)))))
 
 (defn $-
@@ -160,8 +161,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
   ([x & more]
     (apply $+ x (map $- more))))
 (defmethod eval-constraint-expr* :neg
-  [{x :arg} solver]
-  (let [x (eval-constraint-expr x solver)]
+  [{x :arg}]
+  (let [x (eval-constraint-expr x)]
     (if (number? x)
       (- x)
       (VF/minus x))))
@@ -191,24 +192,24 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
             arg2 (keypoints (rest vars) op neutral)]
         (op arg1 arg2)))))
 (defmethod eval-constraint-expr* :*
-  [{x :arg1 y :arg2 eq-arg :eq-arg} solver]
+  [{x :arg1 y :arg2 eq-arg :eq-arg}]
   (if eq-arg
-    (let [x (eval-constraint-expr x solver)
-          y (eval-constraint-expr y solver)]
+    (let [x (eval-constraint-expr x)
+          y (eval-constraint-expr y)]
       (cond
-        (number? y) (eval-constraint-expr ($= ($*view x y) eq-arg) solver)
-        (number? x) (eval-constraint-expr ($= ($*view y x) eq-arg) solver)
-        :else (ICF/times x y (to-int-var solver (eval-constraint-expr eq-arg solver)))))
-    (let [x (eval-constraint-expr x solver)
-          y (eval-constraint-expr y solver)]
+        (number? y) (eval-constraint-expr ($= ($*view x y) eq-arg))
+        (number? x) (eval-constraint-expr ($= ($*view y x) eq-arg))
+        :else (ICF/times x y (to-int-var (eval-constraint-expr eq-arg)))))
+    (let [x (eval-constraint-expr x)
+          y (eval-constraint-expr y)]
       (cond
         (number? y) ($*view x y)
         (number? x) ($*view y x)
         :else (let [nums (keypoints [x y] * 1)
                     total-min (apply min nums)
                     total-max (apply max nums)
-                    z (make-int-var solver total-min total-max)]
-                (constrain! solver (ICF/times x y z))
+                    z (make-int-var total-min total-max)]
+                (constrain! (ICF/times x y z))
                 z)))))
 
 (defn $min
@@ -220,24 +221,23 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
    :can-optimize-eq #{:=}})
 
 (defmethod eval-constraint-expr* :min
-  [{args :args eq-arg :eq-arg} solver]
+  [{args :args eq-arg :eq-arg}]
   (if eq-arg
     (let [args (for [arg args]
-                 (to-int-var solver (eval-constraint-expr arg solver)))
-          eq-arg (eval-constraint-expr eq-arg solver)
-          eq-arg (to-int-var solver eq-arg)]
+                 (to-int-var (eval-constraint-expr arg)))
+          eq-arg (eval-constraint-expr eq-arg)
+          eq-arg (to-int-var eq-arg)]
       (if (= (count args) 2)
         (ICF/minimum eq-arg (first args) (second args))
         (ICF/minimum eq-arg (into-array IntVar args))))
-    (let [args (map #(eval-constraint-expr % solver) args)
-          args (map (partial to-int-var solver) args)
+    (let [args (map eval-constraint-expr args)
+          args (map to-int-var args)
           mins (map domain-min args)
           maxes (map domain-max args)
           final-min (apply min mins)
           final-max (apply min maxes)
-          new-var (make-int-var solver final-min final-max)]
-      (constrain! solver
-                  (if (= (count args) 2)
+          new-var (make-int-var final-min final-max)]
+      (constrain! (if (= (count args) 2)
                     (ICF/minimum new-var (first args) (second args))
                     (ICF/minimum new-var (into-array IntVar args))))
       new-var)))
@@ -251,24 +251,23 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
    :can-optimize-eq #{:=}})
 
 (defmethod eval-constraint-expr* :max
-  [{args :args eq-arg :eq-arg} solver]
+  [{args :args eq-arg :eq-arg}]
   (if eq-arg
     (let [args (for [arg args]
-                 (to-int-var solver (eval-constraint-expr arg solver)))
-          eq-arg (eval-constraint-expr eq-arg solver)
-          eq-arg (to-int-var solver eq-arg)]
+                 (to-int-var (eval-constraint-expr arg)))
+          eq-arg (eval-constraint-expr eq-arg)
+          eq-arg (to-int-var eq-arg)]
       (if (= (count args) 2)
         (ICF/maximum eq-arg (first args) (second args))
         (ICF/maximum eq-arg (into-array IntVar args))))
-    (let [args (map #(eval-constraint-expr % solver) args)
-          args (map (partial to-int-var solver) args)
+    (let [args (map #(eval-constraint-expr %) args)
+          args (map to-int-var args)
           mins (map domain-min args)
           maxes (map domain-max args)
           final-min (apply max mins)
           final-max (apply max maxes)
-          new-var (make-int-var solver final-min final-max)]
-      (constrain! solver
-                  (if (= (count args) 2)
+          new-var (make-int-var final-min final-max)]
+      (constrain! (if (= (count args) 2)
                     (ICF/maximum new-var (first args) (second args))
                     (ICF/maximum new-var (into-array IntVar args))))
       new-var)))
@@ -283,22 +282,22 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
    :can-optimize-eq #{:=}})
 
 (defmethod eval-constraint-expr* :mod
-  [{X :arg1 Y :arg2 Z? :eq-arg} solver]
+  [{X :arg1 Y :arg2 Z? :eq-arg}]
   (if Z?
-    (let [X (eval-constraint-expr X solver)
-          Y (eval-constraint-expr Y solver)
-          Z (eval-constraint-expr Z? solver)
-          X (to-int-var solver X)
-          Y (to-int-var solver Y)
-          Z (to-int-var solver Z)]
+    (let [X (eval-constraint-expr X)
+          Y (eval-constraint-expr Y)
+          Z (eval-constraint-expr Z?)
+          X (to-int-var X)
+          Y (to-int-var Y)
+          Z (to-int-var Z)]
       (ICF/mod X Y Z))
-    (let [X (eval-constraint-expr X solver)
-          Y (eval-constraint-expr Y solver)
-          X (to-int-var solver X)
-          Y (to-int-var solver Y)
+    (let [X (eval-constraint-expr X)
+          Y (eval-constraint-expr Y)
+          X (to-int-var X)
+          Y (to-int-var Y)
           Ymax (domain-max Y)
-          Z (make-int-var solver 0 (max (dec Ymax) 0))]
-      (constrain! solver (ICF/mod X Y Z))
+          Z (make-int-var 0 (max (dec Ymax) 0))]
+      (constrain! (ICF/mod X Y Z))
       Z)))
 
 (defn $abs
@@ -310,12 +309,12 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
    :can-optimize-eq #{:=}})
 
 (defmethod eval-constraint-expr* :abs
-  [{X :arg Y? :eq-arg} solver]
-  (let [X (eval-constraint-expr X solver)
-        X (to-int-var solver X)]
+  [{X :arg Y? :eq-arg}]
+  (let [X (eval-constraint-expr X)
+        X (to-int-var X)]
     (if Y?
-      (let [Y (eval-constraint-expr Y? solver)
-            Y (to-int-var solver Y)]
+      (let [Y (eval-constraint-expr Y?)
+            Y (to-int-var Y)]
         (ICF/absolute Y X))
       (VF/abs X))))
 
@@ -329,16 +328,16 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
    :can-optimize-eq #{:=}})
 
 (defmethod eval-constraint-expr* :scalar
-  [{variables :variables coefficients :coefficients opt-eq :optimizing-eq eq-arg :eq-arg} solver]
+  [{variables :variables coefficients :coefficients opt-eq :optimizing-eq eq-arg :eq-arg}]
   (if opt-eq
-    (let [variables (map #(eval-constraint-expr % solver) variables)
-          variables (map (partial to-int-var solver) variables)]
+    (let [variables (map eval-constraint-expr variables)
+          variables (map to-int-var variables)]
       (ICF/scalar (into-array IntVar variables)
                   (int-array coefficients)
                   (name opt-eq)
-                  (to-int-var solver (eval-constraint-expr eq-arg solver))))
-    (let [variables (map #(eval-constraint-expr % solver) variables)
-          variables (map (partial to-int-var solver) variables)
+                  (to-int-var (eval-constraint-expr eq-arg))))
+    (let [variables (map eval-constraint-expr variables)
+          variables (map to-int-var variables)
           minmaxes (for [[v c] (map vector variables coefficients)
                          :let [dmin (* (domain-min v) c)
                                dmax (* (domain-max v) c)]]
@@ -347,8 +346,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
                        [dmax dmin]))
           final-min (apply + (map first minmaxes))
           final-max (apply + (map second minmaxes))
-          new-var (make-int-var solver final-min final-max)]
-      (constrain! solver (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
+          new-var (make-int-var final-min final-max)]
+      (constrain! (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
       new-var)))
 
 (declare $not $and)
@@ -388,12 +387,12 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
        (apply $and (map (partial apply ~fnname) (partition 2 1 (list* X# Y# more#)))))))
 
 (defmethod eval-constraint-expr* :arithm-eq
-  [data solver]
+  [data]
   (let [op (:eq data)
-        X (eval-constraint-expr (:arg1 data) solver)
-        Y (eval-constraint-expr (:arg2 data) solver)
-        X (to-int-var solver X)
-        Y (to-int-var solver Y)]
+        X (eval-constraint-expr (:arg1 data))
+        Y (eval-constraint-expr (:arg2 data))
+        X (to-int-var X)
+        Y (to-int-var Y)]
     ;(println X Y)
     (ICF/arithm X (name op) Y)))
 
@@ -435,16 +434,16 @@ Giving more than 2 inputs results in an $and statement with multiple $>= stateme
   {:type :true
    :id (id)})
 (defmethod eval-constraint-expr* :true
-  [_ solver]
-  (ICF/TRUE (:csolver solver)))
+  [_]
+  (ICF/TRUE (:csolver *solver*)))
 (defn $false
   "Always false."
   []
   {:type :false
    :id (id)})
 (defmethod eval-constraint-expr* :false
-  [_ solver]
-  (ICF/FALSE (:csolver solver)))
+  [_]
+  (ICF/FALSE (:csolver *solver*)))
 
 (defn $and
   "An \"and\" statement (i.e. \"P^Q^...\"); this statement is true if and only if every subconstraint is true."
@@ -453,8 +452,8 @@ Giving more than 2 inputs results in an $and statement with multiple $>= stateme
     ($true)
     {:type :and, :constraints constraints}))
 (defmethod eval-constraint-expr* :and
-  [{constraints :constraints} solver]
-  (let [constraints (map #(eval-constraint-expr % solver) constraints)]
+  [{constraints :constraints}]
+  (let [constraints (map eval-constraint-expr constraints)]
     (LCF/and (into-array Constraint constraints))))
 (defn $or
   "An \"or\" statement (i.e. \"PvQv...\"); this statement is true if and only if at least one subconstraint is true."
@@ -463,8 +462,8 @@ Giving more than 2 inputs results in an $and statement with multiple $>= stateme
     ($false)
     {:type :or, :constraints constraints}))
 (defmethod eval-constraint-expr* :or
-  [{constraints :constraints} solver]
-  (let [constraints (map #(eval-constraint-expr % solver) constraints)]
+  [{constraints :constraints}]
+  (let [constraints (map eval-constraint-expr constraints)]
     (LCF/or (into-array Constraint constraints))))
 
 (defn $not
@@ -473,8 +472,8 @@ Giving more than 2 inputs results in an $and statement with multiple $>= stateme
   {:type :not, :arg C})
 
 (defmethod eval-constraint-expr* :not
-  [{C :arg} solver]
-  (LCF/not (eval-constraint-expr C solver)))
+  [{C :arg}]
+  (LCF/not (eval-constraint-expr C)))
 
 (defn $if
   "An \"if\" statement (i.e. \"implies\", \"P=>Q\"); this statement is true if and only if P is false or Q is true.
@@ -490,13 +489,13 @@ An optional \"else\" field can be specified, which must be true if P is false."
      :then then-this
      :else else-this}))
 (defmethod eval-constraint-expr* :if
-  [{if-this :if then-this :then else-this :else} solver]
+  [{if-this :if then-this :then else-this :else}]
   (if-not else-this
-    (LCF/ifThen_reifiable (eval-constraint-expr if-this solver)
-                          (eval-constraint-expr then-this solver))
-    (LCF/ifThenElse_reifiable (eval-constraint-expr if-this solver)
-                              (eval-constraint-expr then-this solver)
-                              (eval-constraint-expr else-this solver))))
+    (LCF/ifThen_reifiable (eval-constraint-expr if-this)
+                          (eval-constraint-expr then-this))
+    (LCF/ifThenElse_reifiable (eval-constraint-expr if-this)
+                              (eval-constraint-expr then-this)
+                              (eval-constraint-expr else-this))))
 
 (defn $cond
   "A convenience function for constructing a \"cond\"-like statement out of $if statements.
@@ -523,9 +522,9 @@ If no \"else\" clause is specified, it is \"True\" by default."
    :arg C
    :id (id)})
 (defmethod eval-constraint-expr* :reify
-  [{C :arg} solver]
-  (let [C (eval-constraint-expr C solver)
-        V (make-bool-var solver)]
+  [{C :arg}]
+  (let [C (eval-constraint-expr C)
+        V (make-bool-var)]
     (LCF/reification V C)
     V))
 
@@ -537,8 +536,8 @@ If no \"else\" clause is specified, it is \"True\" by default."
   {:type :distinct
    :args vars})
 (defmethod eval-constraint-expr* :distinct
-  [{vars :args} solver]
-  (let [vars (map #(eval-constraint-expr % solver) vars)]
+  [{vars :args}]
+  (let [vars (map eval-constraint-expr vars)]
     (ICF/alldifferent (into-array IntVar vars) "DEFAULT")))
 
 (defn $all-different?
@@ -557,9 +556,9 @@ Hint: make the offset 1 when using a 1-based list."
      :vars list-of-vars
      :offset offset}))
 (defmethod eval-constraint-expr* :circuit
-  [{list-of-vars :vars offset :offset} solver]
-  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
-        list-of-vars (map (partial to-int-var solver) list-of-vars)]
+  [{list-of-vars :vars offset :offset}]
+  (let [list-of-vars (map eval-constraint-expr list-of-vars)
+        list-of-vars (map to-int-var list-of-vars)]
     (ICF/circuit (into-array IntVar list-of-vars) offset)))
 
 (def $circuit?
@@ -578,22 +577,22 @@ Hint: make the offset 1 when using a 1-based list."
      :id (id)
      :can-optimize-eq #{:=}}))
 (defmethod eval-constraint-expr* :nth
-  [{list-of-vars :vars index-var :index offset :offset eq-arg :eq-arg} solver]
+  [{list-of-vars :vars index-var :index offset :offset eq-arg :eq-arg}]
   (if eq-arg
-    (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
-          list-of-vars (map (partial to-int-var solver) list-of-vars)
-          index-var (eval-constraint-expr index-var solver)
-          index-var (to-int-var solver index-var)
-          value-var (to-int-var solver (eval-constraint-expr eq-arg solver))]
+    (let [list-of-vars (map eval-constraint-expr list-of-vars)
+          list-of-vars (map to-int-var list-of-vars)
+          index-var (eval-constraint-expr index-var)
+          index-var (to-int-var index-var)
+          value-var (to-int-var (eval-constraint-expr eq-arg))]
       (ICF/element value-var (into-array IntVar list-of-vars) index-var offset))
-    (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
-          list-of-vars (map (partial to-int-var solver) list-of-vars)
-          index-var (eval-constraint-expr index-var solver)
-          index-var (to-int-var solver index-var)
+    (let [list-of-vars (map eval-constraint-expr list-of-vars)
+          list-of-vars (map to-int-var list-of-vars)
+          index-var (eval-constraint-expr index-var)
+          index-var (to-int-var index-var)
           final-min (apply min (map domain-min list-of-vars))
           final-max (apply max (map domain-max list-of-vars))
-          new-var (make-int-var solver final-min final-max)]
-      (constrain! solver (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
+          new-var (make-int-var final-min final-max)]
+      (constrain! (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
       new-var)))
 
 (defn $regex
@@ -603,13 +602,13 @@ Hint: make the offset 1 when using a 1-based list."
    :vars list-of-vars
    :auto {:type :automaton :str regex :id (gensym (hash regex))}})
 (defmethod eval-constraint-expr* :automaton
-  [{regex :str} solver]
+  [{regex :str}]
   (FiniteAutomaton. regex))
 (defmethod eval-constraint-expr* :regex
-  [{list-of-vars :vars auto :auto} solver]
-  (let [list-of-vars (map #(eval-constraint-expr % solver) list-of-vars)
-        list-of-vars (map (partial to-int-var solver) list-of-vars)
-        auto (eval-constraint-expr auto solver)]
+  [{list-of-vars :vars auto :auto}]
+  (let [list-of-vars (map eval-constraint-expr list-of-vars)
+        list-of-vars (map to-int-var list-of-vars)
+        auto (eval-constraint-expr auto)]
     (ICF/regular (into-array IntVar list-of-vars)
                  auto)))
 
@@ -628,14 +627,12 @@ Example: ($cardinality [:a :b :c :d :e] {1 :ones, 2 :twos} :closed true)
    :occurrences (vals frequencies)
    :closed (:closed args)})
 (defmethod eval-constraint-expr* :cardinality
-  [{variables :variables values :values occurrences :occurrences closed :closed} solver]
+  [{variables :variables values :values occurrences :occurrences closed :closed}]
   (let [values (int-array values)
         occurrences (into-array IntVar (for [v occurrences]
-                                         (to-int-var solver
-                                                     (eval-constraint-expr v solver))))
+                                         (to-int-var (eval-constraint-expr v))))
         variables (into-array IntVar (for [v variables]
-                                       (to-int-var solver
-                                                   (eval-constraint-expr v solver))))]
+                                       (to-int-var (eval-constraint-expr v))))]
     (ICF/global_cardinality variables values occurrences (boolean closed))))
 
 (defn $knapsack
@@ -660,11 +657,11 @@ Example: ($knapsack [3 1 2]    ; weights
    :total-weight total-weight
    :total-value total-value})
 (defmethod eval-constraint-expr* :knapsack
-  [{:keys [weights values occurrences total-weight total-value]} solver]
+  [{:keys [weights values occurrences total-weight total-value]}]
   (let [occurrences (for [v occurrences]
-                      (to-int-var solver (eval-constraint-expr v solver)))
-        total-weight (to-int-var solver (eval-constraint-expr total-weight solver))
-        total-value (to-int-var solver (eval-constraint-expr total-value solver))]
+                      (to-int-var (eval-constraint-expr v)))
+        total-weight (to-int-var (eval-constraint-expr total-weight))
+        total-value (to-int-var (eval-constraint-expr total-value))]
     (ICF/knapsack (into-array IntVar occurrences)
                   ^IntVar total-weight
                   ^IntVar total-value

@@ -25,7 +25,7 @@
 
 (defmulti eval-constraint-expr*
   "Evaluates a map data structure in the correct behavior, typically returning a constraint or a variable."
-  (fn [data solver]
+  (fn [data]
     (if (and (vector? data)
              (keyword? (first data)))
       :vector-var-name
@@ -97,27 +97,27 @@ and returns a list of variable declarations"
 
 (defn eval-constraint-expr
   "Memoized version of eval-constraint-expr*"
-  [data solver]
+  [data]
   (let [lookup (when (:id data)
-                 (@(:memo-table solver) (:id data)))]
+                 (@(:memo-table *solver*) (:id data)))]
     (if lookup
       lookup
-      (let [result (eval-constraint-expr* data solver)]
+      (let [result (eval-constraint-expr* data)]
         (when (:id data)
-          (swap! (:memo-table solver) assoc (:id data) result))
+          (swap! (:memo-table *solver*) assoc (:id data) result))
         result))))
 
 (defmethod eval-constraint-expr* :default
-  [data solver]
+  [data]
   data)
 
 (defmethod eval-constraint-expr* clojure.lang.Keyword
-  [data solver]
-  (find-int-var solver data))
+  [data]
+  (find-int-var *solver* data))
 
 (defmethod eval-constraint-expr* :vector-var-name
-  [data solver]
-  (find-int-var solver data))
+  [data]
+  (find-int-var *solver* data))
 
 (defn- return-next-solution
   []
@@ -130,22 +130,23 @@ and returns a list of variable declarations"
             [var-name (get-val v)]))))
 
 (defn- constrain!
-  [solver constraint]
-  (.post (:csolver solver) constraint))
+  [constraint]
+  (.post (:csolver *solver*) constraint))
 
 (defn- problem->solver
   [problem]
   (let [problem (concat (top-level-var-declarations problem)
                         (without-top-level-var-declarations problem)) ; dig for the var declarations and put them at the front
         s (new-solver)]
-    (doseq [i problem
-            :let [i (eval-constraint-expr i s)]]
-      (when (instance? Constraint i)
-        (constrain! s i)))
-    (let [vars (vals @(:my-vars s))
-          strategy (ISF/minDom_LB (into-array IntVar vars))]
-      (.set (:csolver s) (into-array AbstractStrategy [strategy])))
-    s))
+    (binding [*solver* s]
+      (doseq [i problem
+              :let [i (eval-constraint-expr i)]]
+        (when (instance? Constraint i)
+          (constrain! i)))
+      (let [vars (vals @(:my-vars s))
+            strategy (ISF/minDom_LB (into-array IntVar vars))]
+        (.set (:csolver s) (into-array AbstractStrategy [strategy])))
+      s)))
 
 (defn- feasible?
   "After the problem has executed, determines whether the problem was feasible"
@@ -164,12 +165,12 @@ and returns a list of variable declarations"
       (SMF/limitTime csolver (long (:timeout args))))
     (cond
       (:maximize args) (do (.findOptimalSolution csolver ResolutionPolicy/MAXIMIZE
-                                                 (eval-constraint-expr (:maximize args) *solver*))
+                                                 (eval-constraint-expr (:maximize args)))
                            (and (feasible?)
                                 (swap! n-atom inc)
                                 true))
       (:minimize args) (do (.findOptimalSolution csolver ResolutionPolicy/MINIMIZE
-                                                 (eval-constraint-expr (:minimize args) *solver*))
+                                                 (eval-constraint-expr (:minimize args)))
                            (and (feasible?)
                                 (swap! n-atom inc)
                                 true))
