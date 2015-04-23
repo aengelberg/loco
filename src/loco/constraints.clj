@@ -127,33 +127,28 @@ Possible arglist examples:
     {:type :+
      :args (list* x y more)
      :id (id)
-     :can-optimize-eq (if (empty? more)
-                        #{}
-                        #{:= :< :> :<= :>= :!=})}))
+     :eq-shortcut true}))
+
+(defmethod ->choco* [:+ :=]
+  [{:keys [args eq-arg] :as m}]
+  (ICF/sum (into-array IntVar (map ->choco-int-var args))
+           (->choco-int-var (:eq-arg m))))
 
 (defmethod ->choco* :+
-  [{args :args :as m}]
-  (if (:optimizing-eq m)
-    (let [args (map ->choco-int-var args)]
-      (ICF/sum (into-array IntVar args)
-               (name (:optimizing-eq m))
-               (->choco-int-var (:eq-arg m))))
-    (let [[x y & more :as vars] (map ->choco args)]
-      (cond
-        (and (empty? more)
-             (number? y)) ($+view x y)
-        (and (empty? more)
-             (number? x)) ($+view y x)
-        :else (let [vars (map ->int-var vars) ; converting numbers to int-views
-                    mins (map #(.getLB ^IntVar %) vars)
-                    maxes (map #(.getUB ^IntVar %) vars)
-                    sum-var (make-int-var (apply + mins) (apply + maxes))
-                    vars (try (into-array BoolVar vars)
-                           (catch Exception e
-                             (into-array IntVar vars)))
-                    ]
-                (constrain! (ICF/sum (into-array IntVar vars) sum-var))
-                sum-var)))))
+  [{:keys [args] :as m}]
+  (let [[x y & more :as vars] (map ->choco args)]
+    (cond
+      (and (empty? more) (number? y)) ($+view x y)
+      (and (empty? more) (number? x)) ($+view y x)
+      :else (let [vars (map ->int-var vars) ; converting numbers to int-views
+                  mins (map #(.getLB ^IntVar %) vars)
+                  maxes (map #(.getUB ^IntVar %) vars)
+                  sum-var (make-int-var (apply + mins) (apply + maxes))
+                  vars (try (into-array BoolVar vars)
+                            (catch Exception e
+                              (into-array IntVar vars)))]
+              (constrain! (ICF/sum (into-array IntVar vars) sum-var))
+              sum-var))))
 
 (defn $-
   "Takes a combination of int-vars and numbers, and returns another number/int-var which is constrained
@@ -165,7 +160,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
        :arg x
        :id (id)}))
   ([x & more]
-    (apply $+ x (map $- more))))
+   (apply $+ x (map $- more))))
+
 (defmethod ->choco* :neg
   [{x :arg}]
   (let [x (->choco x)]
@@ -182,11 +178,12 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
    :arg1 x
    :arg2 y
    :id (id)
-   :can-optimize-eq #{:=}})
+   :eq-shortcut true})
 
 (defn- $*view
   [x const]
   (VF/scale x const))
+
 (defn- keypoints
   [vars op neutral]
   (if (empty? vars)
@@ -197,26 +194,29 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
       (for [arg1 [lo hi]
             arg2 (keypoints (rest vars) op neutral)]
         (op arg1 arg2)))))
+
+(defmethod ->choco* [:* :=]
+  [{x :arg1 y :arg2 z :eq-arg}]
+  (let [x (->choco x)
+        y (->choco y)]
+    (cond
+      (number? y) (ICF/arithm ($*view x y) "=" (->choco-int-var z))
+      (number? x) (ICF/arithm ($*view y x) "=" (->choco-int-var z))
+      :else (ICF/times x y (->choco-int-var z)))))
+
 (defmethod ->choco* :*
-  [{x :arg1 y :arg2 eq-arg :eq-arg}]
-  (if eq-arg
-    (let [x (->choco x)
-          y (->choco y)]
-      (cond
-        (number? y) (->choco ($= ($*view x y) eq-arg))
-        (number? x) (->choco ($= ($*view y x) eq-arg))
-        :else (ICF/times x y (->choco-int-var eq-arg))))
-    (let [x (->choco x)
-          y (->choco y)]
-      (cond
-        (number? y) ($*view x y)
-        (number? x) ($*view y x)
-        :else (let [nums (keypoints [x y] * 1)
-                    total-min (apply min nums)
-                    total-max (apply max nums)
-                    z (make-int-var total-min total-max)]
-                (constrain! (ICF/times x y z))
-                z)))))
+  [{x :arg1 y :arg2}]
+  (let [x (->choco x)
+        y (->choco y)]
+    (cond
+      (number? y) ($*view x y)
+      (number? x) ($*view y x)
+      :else (let [nums (keypoints [x y] * 1)
+                  total-min (apply min nums)
+                  total-max (apply max nums)
+                  z (make-int-var total-min total-max)]
+              (constrain! (ICF/times x y z))
+              z))))
 
 (defn $min
   "The minimum of several arguments. The arguments can be a mixture of int-vars and numbers."
@@ -224,26 +224,28 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
   {:type :min
    :args args
    :id (id)
-   :can-optimize-eq #{:=}})
+   :eq-shortcut true})
+
+(defmethod ->choco* [:min :=]
+  [{:keys [args eq-arg]}]
+  (let [args (map ->choco-int-var args)
+        eq-arg (->choco-int-var eq-arg)]
+    (if (= (count args) 2)
+      (ICF/minimum eq-arg (first args) (second args))
+      (ICF/minimum eq-arg (into-array IntVar args)))))
 
 (defmethod ->choco* :min
-  [{args :args eq-arg :eq-arg}]
-  (if eq-arg
-    (let [args (map ->choco-int-var args)
-          eq-arg (->choco-int-var eq-arg)]
-      (if (= (count args) 2)
-        (ICF/minimum eq-arg (first args) (second args))
-        (ICF/minimum eq-arg (into-array IntVar args))))
-    (let [args (map ->choco-int-var args)
-          mins (map domain-min args)
-          maxes (map domain-max args)
-          final-min (apply min mins)
-          final-max (apply min maxes)
-          new-var (make-int-var final-min final-max)]
-      (constrain! (if (= (count args) 2)
-                    (ICF/minimum new-var (first args) (second args))
-                    (ICF/minimum new-var (into-array IntVar args))))
-      new-var)))
+  [{:keys [args]}]
+  (let [args (map ->choco-int-var args)
+        mins (map domain-min args)
+        maxes (map domain-max args)
+        final-min (apply min mins)
+        final-max (apply min maxes)
+        new-var (make-int-var final-min final-max)]
+    (constrain! (if (= (count args) 2)
+                  (ICF/minimum new-var (first args) (second args))
+                  (ICF/minimum new-var (into-array IntVar args))))
+    new-var))
 
 (defn $max
   "The maximum of several arguments. The arguments can be a mixture of int-vars and numbers."
@@ -251,27 +253,28 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
   {:type :max
    :args args
    :id (id)
-   :can-optimize-eq #{:=}})
+   :eq-shortcut true})
+
+(defmethod ->choco* [:max :=]
+  [{:keys [args eq-arg]}]
+  (let [args (map ->choco-int-var args)
+        eq-arg (->choco-int-var eq-arg)]
+    (if (= (count args) 2)
+      (ICF/maximum eq-arg (first args) (second args))
+      (ICF/maximum eq-arg (into-array IntVar args)))))
 
 (defmethod ->choco* :max
-  [{args :args eq-arg :eq-arg}]
-  (if eq-arg
-    (let [args (for [arg args]
-                 (->choco-int-var arg))
-          eq-arg (->choco-int-var eq-arg)]
-      (if (= (count args) 2)
-        (ICF/maximum eq-arg (first args) (second args))
-        (ICF/maximum eq-arg (into-array IntVar args))))
-    (let [args (map ->choco-int-var args)
-          mins (map domain-min args)
-          maxes (map domain-max args)
-          final-min (apply max mins)
-          final-max (apply max maxes)
-          new-var (make-int-var final-min final-max)]
-      (constrain! (if (= (count args) 2)
-                    (ICF/maximum new-var (first args) (second args))
-                    (ICF/maximum new-var (into-array IntVar args))))
-      new-var)))
+  [{:keys [args]}]
+  (let [args (map ->choco-int-var args)
+        mins (map domain-min args)
+        maxes (map domain-max args)
+        final-min (apply max mins)
+        final-max (apply max maxes)
+        new-var (make-int-var final-min final-max)]
+    (constrain! (if (= (count args) 2)
+                  (ICF/maximum new-var (first args) (second args))
+                  (ICF/maximum new-var (into-array IntVar args))))
+    new-var))
 
 (defn $mod
   "Given variables X and Y, returns X mod Y."
@@ -280,21 +283,22 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
    :arg1 X
    :arg2 Y
    :id (id)
-   :can-optimize-eq #{:=}})
+   :eq-shortcut true})
+
+(defmethod ->choco* [:mod :=]
+  [{X :arg1 Y :arg2 Z :eq-arg}]
+  (ICF/mod (->choco-int-var X)
+           (->choco-int-var Y)
+           (->choco-int-var Z)))
 
 (defmethod ->choco* :mod
-  [{X :arg1 Y :arg2 Z? :eq-arg}]
-  (if-let [Z Z?]
-    (let [X (->choco-int-var X)
-          Y (->choco-int-var Y)
-          Z (->choco-int-var Z)]
-      (ICF/mod X Y Z))
-    (let [X (->choco-int-var X)
-          Y (->choco-int-var Y)
-          Ymax (domain-max Y)
-          Z (make-int-var 0 (max (dec Ymax) 0))]
-      (constrain! (ICF/mod X Y Z))
-      Z)))
+  [{X :arg1 Y :arg2}]
+  (let [X (->choco-int-var X)
+        Y (->choco-int-var Y)
+        Ymax (domain-max Y)
+        Z (make-int-var 0 (max (dec Ymax) 0))]
+    (constrain! (ICF/mod X Y Z))
+    Z))
 
 (defn $abs
   "Given a variable X, returns the absolute value of X, or |X|."
@@ -302,15 +306,15 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
   {:type :abs
    :arg X
    :id (id)
-   :can-optimize-eq #{:=}})
+   :eq-shortcut true})
+
+(defmethod ->choco* [:abs :=]
+  [{X :arg Y :eq-arg}]
+  (ICF/absolute (->choco-int-var Y) (->choco-int-var X)))
 
 (defmethod ->choco* :abs
-  [{X :arg Y? :eq-arg}]
-  (let [X (->choco-int-var X)]
-    (if-let [Y Y?]
-      (let [Y (->choco-int-var Y)]
-        (ICF/absolute Y X))
-      (VF/abs X))))
+  [{X :arg}]
+  (VF/abs (->choco-int-var X)))
 
 (defn $scalar
   "Given a list of variables X, Y, Z, etc. and a list of number coefficients a, b, c, etc. returns a new variable constrained to equal aX + bY + cZ ..."
@@ -319,28 +323,29 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
    :variables variables
    :coefficients coefficients
    :id (id)
-   :can-optimize-eq #{:=}})
+   :eq-shortcut true})
+
+(defmethod ->choco* [:scalar :=]
+  [{:keys [variables coefficients eq-arg]}]
+  (ICF/scalar (into-array IntVar (map ->choco-int-var variables))
+              (int-array coefficients)
+              "="
+              (->choco-int-var eq-arg)))
 
 (defmethod ->choco* :scalar
-  [{variables :variables coefficients :coefficients opt-eq :optimizing-eq eq-arg :eq-arg}]
-  (if opt-eq
-    (let [variables (map ->choco-int-var variables)]
-      (ICF/scalar (into-array IntVar variables)
-                  (int-array coefficients)
-                  (name opt-eq)
-                  (->choco-int-var eq-arg)))
-    (let [variables (map ->choco-int-var variables)
-          minmaxes (for [[v c] (map vector variables coefficients)
-                         :let [dmin (* (domain-min v) c)
-                               dmax (* (domain-max v) c)]]
-                     (if (< dmin dmax)
-                       [dmin dmax]
-                       [dmax dmin]))
-          final-min (apply + (map first minmaxes))
-          final-max (apply + (map second minmaxes))
-          new-var (make-int-var final-min final-max)]
-      (constrain! (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
-      new-var)))
+  [{:keys [variables coefficients]}]
+  (let [variables (map ->choco-int-var variables)
+        minmaxes (for [[v c] (map vector variables coefficients)
+                       :let [dmin (* (domain-min v) c)
+                             dmax (* (domain-max v) c)]]
+                   (if (< dmin dmax)
+                     [dmin dmax]
+                     [dmax dmin]))
+        final-min (apply + (map first minmaxes))
+        final-max (apply + (map second minmaxes))
+        new-var (make-int-var final-min final-max)]
+    (constrain! (ICF/scalar (into-array IntVar variables) (int-array coefficients) new-var))
+    new-var))
 
 (declare $not $and)
 
@@ -357,24 +362,10 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
   `(defn ~fnname
      ~docstring
      ([X# Y#]
-       (cond
-         (contains? (:can-optimize-eq X#) ~(keyword eqstr))
-         (-> X#
-           (assoc :optimizing-eq ~(keyword eqstr) :eq-arg Y#)
-           (dissoc :can-optimize-eq)
-           (dissoc :id))
-         
-         (contains? (:can-optimize-eq Y#) ~(eq-converse (keyword eqstr)))
-         (-> Y#
-           (assoc :optimizing-eq ~(eq-converse (keyword eqstr)) :eq-arg X#)
-           (dissoc :can-optimize-eq)
-           (dissoc :id))
-         
-         :else
-         {:type :arithm-eq
-          :eq ~eqstr
-          :arg1 X#
-          :arg2 Y#}))
+       {:type :arithm-eq
+        :eq ~eqstr
+        :arg1 X#
+        :arg2 Y#})
      ([X# Y# & more#]
        (apply $and (map (partial apply ~fnname) (partition 2 1 (list* X# Y# more#)))))))
 
@@ -386,10 +377,6 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
     ;(println X Y)
     (ICF/arithm X (name op) Y)))
 
-(defn-equality-constraint $=
-  "Constrains that X = Y.
-Giving more than 2 inputs results in an $and statement with multiple $= statements."
-  "=")
 (defn-equality-constraint $<
   "Constrains that X < Y.
 Giving more than 2 inputs results in an $and statement with multiple $< statements."
@@ -406,6 +393,27 @@ Giving more than 2 inputs results in an $and statement with multiple $<= stateme
   "Constrains that X >= Y.
 Giving more than 2 inputs results in an $and statement with multiple $>= statements."
   ">=")
+
+(defn-equality-constraint ^:private $=*
+  "(internal) Raw equal constraint."
+  "=")
+(defn $=
+  "Constrains that X = Y.
+  Giving more than 2 inputs results in an $and statement with multiple $= statements."
+  ([X Y]
+   (cond
+     (:eq-shortcut X) (assoc X
+                             :id (id)
+                             :type [(:type X) :=]
+                             :eq-arg Y)
+     (:eq-shortcut Y) (assoc Y
+                             :id (id)
+                             :type [(:type Y) :=]
+                             :eq-arg X)
+     :else ($=* X Y)))
+  ([X Y Z & more]
+   (apply $=* X Y Z more)))
+
 (defn $!=
   "Constrains that X != Y, i.e. (not X = Y = ...)"
   ([X Y]
@@ -423,14 +431,17 @@ Giving more than 2 inputs results in an $and statement with multiple $>= stateme
   []
   {:type :true
    :id (id)})
+
 (defmethod ->choco* :true
   [_]
   (ICF/TRUE (:csolver *solver*)))
+
 (defn $false
   "Always false."
   []
   {:type :false
    :id (id)})
+
 (defmethod ->choco* :false
   [_]
   (ICF/FALSE (:csolver *solver*)))
@@ -441,16 +452,19 @@ Giving more than 2 inputs results in an $and statement with multiple $>= stateme
   (if (empty? constraints)
     ($true)
     {:type :and, :constraints constraints}))
+
 (defmethod ->choco* :and
   [{constraints :constraints}]
   (let [constraints (map ->choco constraints)]
     (LCF/and (into-array Constraint constraints))))
+
 (defn $or
   "An \"or\" statement (i.e. \"PvQv...\"); this statement is true if and only if at least one subconstraint is true."
   [& constraints]
   (if (empty? constraints)
     ($false)
     {:type :or, :constraints constraints}))
+
 (defmethod ->choco* :or
   [{constraints :constraints}]
   (let [constraints (map ->choco constraints)]
@@ -478,6 +492,7 @@ An optional \"else\" field can be specified, which must be true if P is false."
      :if if-this
      :then then-this
      :else else-this}))
+
 (defmethod ->choco* :if
   [{if-this :if then-this :then else-this :else}]
   (if-not else-this
@@ -511,6 +526,7 @@ If no \"else\" clause is specified, it is \"True\" by default."
   {:type :reify
    :arg C
    :id (id)})
+
 (defmethod ->choco* :reify
   [{C :arg}]
   (let [C (->choco C)
@@ -525,6 +541,7 @@ If no \"else\" clause is specified, it is \"True\" by default."
   [vars]
   {:type :distinct
    :args vars})
+
 (defmethod ->choco* :distinct
   [{vars :args}]
   (let [vars (map ->choco vars)]
@@ -564,21 +581,24 @@ Hint: make the offset 1 when using a 1-based list."
      :index index-var
      :offset offset
      :id (id)
-     :can-optimize-eq #{:=}}))
+     :eq-shortcut true}))
+
+(defmethod ->choco* [:nth :=]
+  [{:keys [vars index offset eq-arg]}]
+  (let [vars (map ->choco-int-var vars)
+        index (->choco-int-var index)
+        value (->choco-int-var eq-arg)]
+    (ICF/element value (into-array IntVar vars) index offset)))
+
 (defmethod ->choco* :nth
-  [{list-of-vars :vars index-var :index offset :offset eq-arg :eq-arg}]
-  (if eq-arg
-    (let [list-of-vars (map ->choco-int-var list-of-vars)
-          index-var (->choco-int-var index-var)
-          value-var (->choco-int-var eq-arg)]
-      (ICF/element value-var (into-array IntVar list-of-vars) index-var offset))
-    (let [list-of-vars (map ->choco-int-var list-of-vars)
-          index-var (->choco-int-var index-var)
-          final-min (apply min (map domain-min list-of-vars))
-          final-max (apply max (map domain-max list-of-vars))
-          new-var (make-int-var final-min final-max)]
-      (constrain! (ICF/element new-var (into-array IntVar list-of-vars) index-var offset))
-      new-var)))
+  [{:keys [vars index offset]}]
+  (let [vars (map ->choco-int-var vars)
+        index (->choco-int-var index)
+        final-min (apply min (map domain-min vars))
+        final-max (apply max (map domain-max vars))
+        new-var (make-int-var final-min final-max)]
+    (constrain! (ICF/element new-var (into-array IntVar vars) index offset))
+    new-var))
 
 (defn $regex
   "Given a regex and a list of variables, constrains that said variables in sequence must satisfy the regex."

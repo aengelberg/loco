@@ -108,7 +108,7 @@ and returns a list of variable declarations"
           (swap! (:memo-table *solver*) assoc (:id data) result))
         result))))
 
-(defmethod ->choco* :default
+(defmethod ->choco* java.lang.Number
   [data]
   data)
 
