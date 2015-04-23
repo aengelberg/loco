@@ -23,15 +23,17 @@
     x
     (.getUB x)))
 
-(defn make-const-var
+(defn- make-const-var
   [n]
   (VF/fixed n (:csolver *solver*)))
 
-(defn make-int-var
+(defn- make-int-var
+  "Quick helper function to generate an integer variable for intermediate calculations."
   [min max]
   (VF/enumerated (str (gensym "_int-var")) min max (:csolver *solver*)))
 
-(defn make-bool-var
+(defn- make-bool-var
+  "Quick helper function to generate a boolean variable for intermediate calculations."
   []
   (VF/bool (str (gensym "_bool-var")) (:csolver *solver*)))
 
@@ -39,13 +41,19 @@
   [constraint]
   (.post (:csolver *solver*) constraint))
 
-(defn- to-int-var
+(defn- ->int-var
+  "Takes a Choco IntVar or a number, and if it is a number, coerces it to an IntVar."
   [x]
   (cond
     (number? x) (make-const-var x)
     (instance? IntVar x) x
     (instance? Constraint x) (throw (IllegalArgumentException. "Expected a variable or a number, but got a constraint"))
-    :else (throw (IllegalArgumentException. "Constraint expected an int-var or number"))))
+    :else (throw (IllegalArgumentException. "Expected an int variable or number"))))
+
+(defn- ->choco-int-var
+  "Chains ->choco and ->int-var"
+  [x]
+  (-> x ->choco ->int-var))
 
 (defn- id
   []
@@ -126,19 +134,17 @@ Possible arglist examples:
 (defmethod ->choco* :+
   [{args :args :as m}]
   (if (:optimizing-eq m)
-    (let [args (map ->choco args)
-          args (map to-int-var args)]
+    (let [args (map ->choco-int-var args)]
       (ICF/sum (into-array IntVar args)
                (name (:optimizing-eq m))
-               (to-int-var (->choco (:eq-arg m)))))
-    (let [[x y & more] (map ->choco args)]
+               (->choco-int-var (:eq-arg m))))
+    (let [[x y & more :as vars] (map ->choco args)]
       (cond
         (and (empty? more)
              (number? y)) ($+view x y)
         (and (empty? more)
              (number? x)) ($+view y x)
-        :else (let [vars (list* x y more)
-                    vars (map to-int-var vars) ; converting numbers to int-views
+        :else (let [vars (map ->int-var vars) ; converting numbers to int-views
                     mins (map #(.getLB ^IntVar %) vars)
                     maxes (map #(.getUB ^IntVar %) vars)
                     sum-var (make-int-var (apply + mins) (apply + maxes))
@@ -199,7 +205,7 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
       (cond
         (number? y) (->choco ($= ($*view x y) eq-arg))
         (number? x) (->choco ($= ($*view y x) eq-arg))
-        :else (ICF/times x y (to-int-var (->choco eq-arg)))))
+        :else (ICF/times x y (->choco-int-var eq-arg))))
     (let [x (->choco x)
           y (->choco y)]
       (cond
@@ -223,15 +229,12 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
 (defmethod ->choco* :min
   [{args :args eq-arg :eq-arg}]
   (if eq-arg
-    (let [args (for [arg args]
-                 (to-int-var (->choco arg)))
-          eq-arg (->choco eq-arg)
-          eq-arg (to-int-var eq-arg)]
+    (let [args (map ->choco-int-var args)
+          eq-arg (->choco-int-var eq-arg)]
       (if (= (count args) 2)
         (ICF/minimum eq-arg (first args) (second args))
         (ICF/minimum eq-arg (into-array IntVar args))))
-    (let [args (map ->choco args)
-          args (map to-int-var args)
+    (let [args (map ->choco-int-var args)
           mins (map domain-min args)
           maxes (map domain-max args)
           final-min (apply min mins)
@@ -254,14 +257,12 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
   [{args :args eq-arg :eq-arg}]
   (if eq-arg
     (let [args (for [arg args]
-                 (to-int-var (->choco arg)))
-          eq-arg (->choco eq-arg)
-          eq-arg (to-int-var eq-arg)]
+                 (->choco-int-var arg))
+          eq-arg (->choco-int-var eq-arg)]
       (if (= (count args) 2)
         (ICF/maximum eq-arg (first args) (second args))
         (ICF/maximum eq-arg (into-array IntVar args))))
-    (let [args (map #(->choco %) args)
-          args (map to-int-var args)
+    (let [args (map ->choco-int-var args)
           mins (map domain-min args)
           maxes (map domain-max args)
           final-min (apply max mins)
@@ -283,18 +284,13 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
 
 (defmethod ->choco* :mod
   [{X :arg1 Y :arg2 Z? :eq-arg}]
-  (if Z?
-    (let [X (->choco X)
-          Y (->choco Y)
-          Z (->choco Z?)
-          X (to-int-var X)
-          Y (to-int-var Y)
-          Z (to-int-var Z)]
+  (if-let [Z Z?]
+    (let [X (->choco-int-var X)
+          Y (->choco-int-var Y)
+          Z (->choco-int-var Z)]
       (ICF/mod X Y Z))
-    (let [X (->choco X)
-          Y (->choco Y)
-          X (to-int-var X)
-          Y (to-int-var Y)
+    (let [X (->choco-int-var X)
+          Y (->choco-int-var Y)
           Ymax (domain-max Y)
           Z (make-int-var 0 (max (dec Ymax) 0))]
       (constrain! (ICF/mod X Y Z))
@@ -310,11 +306,9 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
 
 (defmethod ->choco* :abs
   [{X :arg Y? :eq-arg}]
-  (let [X (->choco X)
-        X (to-int-var X)]
-    (if Y?
-      (let [Y (->choco Y?)
-            Y (to-int-var Y)]
+  (let [X (->choco-int-var X)]
+    (if-let [Y Y?]
+      (let [Y (->choco-int-var Y)]
         (ICF/absolute Y X))
       (VF/abs X))))
 
@@ -330,14 +324,12 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
 (defmethod ->choco* :scalar
   [{variables :variables coefficients :coefficients opt-eq :optimizing-eq eq-arg :eq-arg}]
   (if opt-eq
-    (let [variables (map ->choco variables)
-          variables (map to-int-var variables)]
+    (let [variables (map ->choco-int-var variables)]
       (ICF/scalar (into-array IntVar variables)
                   (int-array coefficients)
                   (name opt-eq)
-                  (to-int-var (->choco eq-arg))))
-    (let [variables (map ->choco variables)
-          variables (map to-int-var variables)
+                  (->choco-int-var eq-arg)))
+    (let [variables (map ->choco-int-var variables)
           minmaxes (for [[v c] (map vector variables coefficients)
                          :let [dmin (* (domain-min v) c)
                                dmax (* (domain-max v) c)]]
@@ -389,10 +381,8 @@ to equal (x - y - z - ...) or (-x) if there's only one argument."
 (defmethod ->choco* :arithm-eq
   [data]
   (let [op (:eq data)
-        X (->choco (:arg1 data))
-        Y (->choco (:arg2 data))
-        X (to-int-var X)
-        Y (to-int-var Y)]
+        X (->choco-int-var (:arg1 data))
+        Y (->choco-int-var (:arg2 data))]
     ;(println X Y)
     (ICF/arithm X (name op) Y)))
 
@@ -557,8 +547,7 @@ Hint: make the offset 1 when using a 1-based list."
      :offset offset}))
 (defmethod ->choco* :circuit
   [{list-of-vars :vars offset :offset}]
-  (let [list-of-vars (map ->choco list-of-vars)
-        list-of-vars (map to-int-var list-of-vars)]
+  (let [list-of-vars (map ->choco-int-var list-of-vars)]
     (ICF/circuit (into-array IntVar list-of-vars) offset)))
 
 (def $circuit?
@@ -579,16 +568,12 @@ Hint: make the offset 1 when using a 1-based list."
 (defmethod ->choco* :nth
   [{list-of-vars :vars index-var :index offset :offset eq-arg :eq-arg}]
   (if eq-arg
-    (let [list-of-vars (map ->choco list-of-vars)
-          list-of-vars (map to-int-var list-of-vars)
-          index-var (->choco index-var)
-          index-var (to-int-var index-var)
-          value-var (to-int-var (->choco eq-arg))]
+    (let [list-of-vars (map ->choco-int-var list-of-vars)
+          index-var (->choco-int-var index-var)
+          value-var (->choco-int-var eq-arg)]
       (ICF/element value-var (into-array IntVar list-of-vars) index-var offset))
-    (let [list-of-vars (map ->choco list-of-vars)
-          list-of-vars (map to-int-var list-of-vars)
-          index-var (->choco index-var)
-          index-var (to-int-var index-var)
+    (let [list-of-vars (map ->choco-int-var list-of-vars)
+          index-var (->choco-int-var index-var)
           final-min (apply min (map domain-min list-of-vars))
           final-max (apply max (map domain-max list-of-vars))
           new-var (make-int-var final-min final-max)]
@@ -606,8 +591,7 @@ Hint: make the offset 1 when using a 1-based list."
   (FiniteAutomaton. regex))
 (defmethod ->choco* :regex
   [{list-of-vars :vars auto :auto}]
-  (let [list-of-vars (map ->choco list-of-vars)
-        list-of-vars (map to-int-var list-of-vars)
+  (let [list-of-vars (map ->choco-int-var list-of-vars)
         auto (->choco auto)]
     (ICF/regular (into-array IntVar list-of-vars)
                  auto)))
@@ -629,10 +613,8 @@ Example: ($cardinality [:a :b :c :d :e] {1 :ones, 2 :twos} :closed true)
 (defmethod ->choco* :cardinality
   [{variables :variables values :values occurrences :occurrences closed :closed}]
   (let [values (int-array values)
-        occurrences (into-array IntVar (for [v occurrences]
-                                         (to-int-var (->choco v))))
-        variables (into-array IntVar (for [v variables]
-                                       (to-int-var (->choco v))))]
+        occurrences (into-array IntVar (map ->choco-int-var occurrences))
+        variables (into-array IntVar (map ->choco-int-var variables))]
     (ICF/global_cardinality variables values occurrences (boolean closed))))
 
 (defn $knapsack
@@ -658,10 +640,9 @@ Example: ($knapsack [3 1 2]    ; weights
    :total-value total-value})
 (defmethod ->choco* :knapsack
   [{:keys [weights values occurrences total-weight total-value]}]
-  (let [occurrences (for [v occurrences]
-                      (to-int-var (->choco v)))
-        total-weight (to-int-var (->choco total-weight))
-        total-value (to-int-var (->choco total-value))]
+  (let [occurrences (map ->choco-int-var occurrences)
+        total-weight (->choco-int-var total-weight)
+        total-value (->choco-int-var total-value)]
     (ICF/knapsack (into-array IntVar occurrences)
                   ^IntVar total-weight
                   ^IntVar total-value
