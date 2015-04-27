@@ -37,34 +37,25 @@
     ($= s (occurrence-count (second s) series))))
 
 (defn ms2-model
-  "Return the model."
   [series-length]
   (let [series (series-vars series-length)] 
-    (concat series
-            (numeric-constraints series)
+    (concat (numeric-constraints series)
             (occurrence-constraints series))))
 
-(defn reorder-solution
-  "Manages to rearrange a solution in a better way."
-  [solution]
-  (into (sorted-map) solution))
-
 (deftest magicseries2-tests
-  "Testing Magic Series solution #2. One solution given a length."
+  "Testing Magic Series solution #2."
   
   ;; No solution for length < 4
-  (is (empty? (solution (ms2-model 1))) "Length 1 does not have solution")
-  (is (empty? (solution (ms2-model 2))) "Length 2 does not have solution")
-  (is (empty? (solution (ms2-model 3))) "Length 3 does not have solution")
+  (is (empty? (solutions (ms2-model 1))) "Length 1 does not have solution")
+  (is (empty? (solutions (ms2-model 2))) "Length 2 does not have solution")
+  (is (empty? (solutions (ms2-model 3))) "Length 3 does not have solution")
 
   ;; No solution for length = 6 (try it out!)
-  (is (empty? (solution (ms2-model 6))) "Length 6 does not have solution")
+  (is (empty? (solutions (ms2-model 6))) "Length 6 does not have solution")
   
   ;; Testing between 4 (inclusive) and 50 (inclusive)
-  (doseq [l (take 10 (repeatedly #(+ 4 (rand-int 47))))]
-    (let [sol (solution (ms2-model l))] 
-      #_(println "Solution for length:" l " " (reorder-solution sol)) 
-
+  (doseq [l (range 4 21)]
+    (doseq [sol (solutions (ms2-model l))] 
       (doseq [[[k i] occ] (seq sol)]
         (is (= occ (count (filter #(= i %1) (map second sol)))))))))
 
