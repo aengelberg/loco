@@ -237,8 +237,8 @@ There are a couple things to note here:
 
 * Loco has to automatically guess a new starting domain for `_int-var8624` based on the domains of `b` and `c`.
 It can do this by guessing the new minimum and maximum, depending on `b` and `c`'s domain mins / maxes and the operation
-you are calling on the variables. In this case, the absolute possible minimum of `b * c` must be 4 (4 * 1), and the
-maximum is 40 (8 * 5).
+you are calling on the variables. In this case, the absolute possible minimum of `b * c` must be 4 * 1 = 4, and the
+maximum is 8 * 5 = 40.
 * A temporary variable did not have to be created for the addition, because Loco recognized the opportunity to use the direct `x + y = z`
 constraint already provided by Choco. I've implemented some pre-defined shortcuts, so that in general, `($= ($some-operator ...) x)`
 will result in one constraint, not multiple.
