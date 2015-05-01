@@ -269,10 +269,19 @@ You can get a lazy sequence of ALL of the solutions by calling `solutions`:
                 ($= :x :y)])
     => ({:x 1, :y 1}, {:x 2, :y 2}, {:x 3, :y 3}, {:x 4, :y 4}, {:x 5, :y 5})
 
+You can also use the `:minimize/:maximize` keyword on `solutions`.
+This will find all of the optimal solutions, in a non-lazy sequence:
+
+    (solutions [($in :x -5 5)
+                ($in :y -5 5)]
+               :minimize ($* :x :y))
+    => ({:x 5, :y -5} {:x -5, :y 5})
+
 To time-out the solution early, use the `:timeout` argument. After the specified amount of milliseconds,
 - if calling `solution`, returns `nil`;
 - if calling `solution` with a `:minimize` or `:maximize` keyword, returns the best solution found so far;
 - if calling `solutions`, ends the lazy sequence early.
+- if calling `solutions` with a `:minimize` or `:maximize` keyword, ends the list of optimal solutions early.
 
 Note that this timeout is not a guarantee -- the timer is only checked between propagations, which usually but not always
 results in a punctual termination.

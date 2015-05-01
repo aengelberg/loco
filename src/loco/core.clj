@@ -123,12 +123,20 @@ and returns a list of variable declarations"
 (defn- return-next-solution
   []
   (let [n (dec @(:n-solutions *solver*))]
-    (into (with-meta {} {:loco/solution n})
+    (into {}
           (for [[var-name v] @(:my-vars *solver*)
                 :when (if (keyword? var-name)
                         (not= (first (name var-name)) \_)
                         (not= (first (name (first var-name))) \_))]
             [var-name (get-val v)]))))
+
+(defn- Solution->solution-map
+  [S]
+  (into {} (for [[var-name v] @(:my-vars *solver*)
+                 :when (if (keyword? var-name)
+                         (not= (first (name var-name)) \_)
+                         (not= (first (name (first var-name))) \_))]
+             [var-name (.getIntVal S v)])))
 
 (defn- constrain!
   [constraint]
@@ -183,7 +191,7 @@ and returns a list of variable declarations"
                    (swap! n-atom inc)
                    true)))))
 
-(defn solution*
+(defn- solution*
   [args]
   (when (solve! args)
     (return-next-solution)))
@@ -204,15 +212,34 @@ Note: returned solution maps have the metadata {:loco/solution <n>} denoting tha
 (defn solutions
   "Solves the solver using the constraints and returns a lazy seq of maps (for each solution) from variable names to their values.
 Keyword arguments:
-- :timeout <number> - the lazy sequence ends prematurely if the timer exceeds a certain number of milliseconds.
-(note: the clock starts ticking when you call 'first' on the resulting lazy-seq. I recommend calling 'doall' to avoid erratic lazy behavior.)"
+- :timeout <number> - the sequence ends prematurely if the timer exceeds a certain number of milliseconds.
+- :maximize <var> - finds all solutions that maximize the given var or expression. NOT lazy.
+- :minimize <var> - finds all solutions that minimize the given var or expression. NOT lazy."
   [problem & args]
   (let [solver (problem->solver problem)
+        ^Solver csolver (:csolver solver)
         args (apply hash-map args)
         timeout (:timeout args)
-        args (dissoc args :timeout)]
+        maximize (:maximize args)
+        minimize (:minimize args)
+        args (dissoc args :timeout :maximize :minimize)]
     (when timeout
-      (SMF/limitTime (:csolver solver) timeout))
-    (take-while identity
-                (repeatedly #(binding [*solver* solver]
-                               (solution* args))))))
+      (SMF/limitTime csolver timeout))
+    (cond
+      maximize (binding [*solver* solver]
+                 (do (.findAllOptimalSolutions csolver ResolutionPolicy/MAXIMIZE
+                                               (->choco maximize)
+                                               false)
+                     (map #(binding [*solver* solver]
+                             (Solution->solution-map %))
+                          (.. csolver (getSolutionRecorder) (getSolutions)))))
+      minimize (binding [*solver* solver]
+                 (do (.findAllOptimalSolutions csolver ResolutionPolicy/MINIMIZE
+                                               (->choco minimize)
+                                               false)
+                     (map #(binding [*solver* solver]
+                             (Solution->solution-map %))
+                          (.. csolver (getSolutionRecorder) (getSolutions)))))
+      :else (take-while identity
+                        (repeatedly #(binding [*solver* solver]
+                                       (solution* args)))))))
