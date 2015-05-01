@@ -63,8 +63,6 @@ With some CP APIs, the problem needs to be written as one monolithic query.  How
 
 All of the Loco functions to build these data structures begin with a `$`, in order to make it easier to `use` rather than `require` loco.constraints without name collision.  This is handy because so many of the functions share names with arithmetic and other core functions.
 
-The final constraint, `($= ($+ :x :y) 10)`, is especially interesting because it leverages one of Loco's greatest strengths: the "piping" arithmetic operators.  With most libraries, you need to explicitly create additional variables to hold the results of nested expressions.  With such libraries, the above constraint would be a two step process, first creating some variable constrained to be the sum of x and y, and then constraining that extra variable to 10.  But Loco handles all that for you, letting you express your model naturally.
-
 ## Concepts
 
 ### Names
@@ -119,11 +117,61 @@ but this is:
     [($in :x 1 10)
      ($or ($in :x 1 5) ($in :x 6 10))]
 
+### Expression Nesting
+
+Imagine you'd like to specify `A + (B * C) = D` in your CP model. In Choco (the Java library),
+the code looks something like this:
+
+    IntVar x = VariableFactory.integer("x", 1, 10, solver);
+    solver.post(ICF.times(b, c, x));
+    solver.post(ICF.arithm(a, "+", x, "=", d));
+
+This is surprisingly inelegant for a relatively simple expression.
+Even when looking past the inherent Java messiness, there's a deeper problem, which
+is that I had to create an intermediate variable, `x`, to attach to the expression `B * C`.
+This way of programming forces me to think from the inside out.
+
+In Loco, that expression can be written in one line as it should:
+
+    ($= ($+ :a ($* :b :c)) :d)
+
+This is far closer to the mathematical expression we started with. When this
+constraint is consumed by a Loco function such as `solution`, intermediate variables are
+automatically created behind the scenes. Those variables have auto-generated names beginning with
+`_`, so you can't see them in the solution map.
+
+For instance, given the following model:
+
+    [($in :a 1 10)
+     ($in :b 4 8)
+     ($in :c 1 5)
+     ($in :d 3 10)
+     ($= ($+ :a ($* :b :c)) :d)]
+
+Behind the scenes, Loco is feeding Choco the following pseudo-program:
+
+    a ɛ [1,10]
+    b ɛ [4,8]
+    c ɛ [1,5]
+    d ɛ [3,10]
+    _int-var8624 ɛ [4,40]
+    b + c = _int-var8624
+    a + _int-var8624 = d
+
+There are a couple things to note here:
+
+* Loco has to automatically guess a new starting domain for `_int-var8624` based on the domains of `b` and `c`.
+It can do this by guessing the new minimum and maximum, depending on `b` and `c`'s domain mins / maxes and the operation
+you are calling on the variables. In this case, the absolute possible minimum of `b * c` must be 4 * 1 = 4, and the
+maximum is 8 * 5 = 40.
+* A temporary variable did not have to be created for the addition, because Loco recognized the opportunity to use the direct `x + y = z`
+constraint already provided by Choco. I've implemented some pre-defined shortcuts, so that in general, `($= ($some-operator ...) x)`
+will result in one constraint, not multiple.
+
 ### Constraints
 
 Here is a complete list of all of the constraints available to you.
-Functions marked with an asterisk (*) are not constraints by themselves, but are nestable within other constraints.
-(These are examined in more depth in the next section.)
+Functions marked with an asterisk (*) are nestable expressions (as described in the section above).
 
 #### Numeric Constraints
 
@@ -191,57 +239,6 @@ Example: `($regex "a5" [:x :y]) => {:x 97, :y 5}`. Here is a more technical list
  - `\( \[ \* etc.` - escape special character
 
 Whitespace characters are also treated as unicode numbers; they are not ignored by the parser.
-
-### Expression Nesting
-
-Imagine you'd like to specify `A + (B * C) = D` in your CP model. In Choco (the Java library),
-the code looks something like this:
-
-    IntVar x = VariableFactory.integer("x", 1, 10, solver);
-    solver.post(ICF.times(b, c, x));
-    solver.post(ICF.arithm(a, "+", x, "=", d));
-
-This is surprisingly inelegant for a relatively simple expression.
-Even when looking past the inherent Java messiness, there's a deeper problem, which
-is that I had to create an intermediate variable, `x`, to attach to the expression `B * C`.
-This way of programming forces me to think from the inside out.
-
-In Loco, that expression can be written in one line as it should:
-
-    ($= ($+ :a ($* :b :c)) :d)
-
-This is far closer to the mathematical expression we started with. When this
-constraint is consumed by a Loco function such as `solution`, intermediate variables are
-automatically created behind the scenes. Those variables have auto-generated names beginning with
-`_`, so you can't see them in the solution map.
-
-For instance, given the following model:
-
-    [($in :a 1 10)
-     ($in :b 4 8)
-     ($in :c 1 5)
-     ($in :d 3 10)
-     ($= ($+ :a ($* :b :c)) :d)]
-
-Behind the scenes, Loco is feeding Choco the following pseudo-program:
-
-    a ɛ [1,10]
-    b ɛ [4,8]
-    c ɛ [1,5]
-    d ɛ [3,10]
-    _int-var8624 ɛ [4,40]
-    b + c = _int-var8624
-    a + _int-var8624 = d
-
-There are a couple things to note here:
-
-* Loco has to automatically guess a new starting domain for `_int-var8624` based on the domains of `b` and `c`.
-It can do this by guessing the new minimum and maximum, depending on `b` and `c`'s domain mins / maxes and the operation
-you are calling on the variables. In this case, the absolute possible minimum of `b * c` must be 4 * 1 = 4, and the
-maximum is 8 * 5 = 40.
-* A temporary variable did not have to be created for the addition, because Loco recognized the opportunity to use the direct `x + y = z`
-constraint already provided by Choco. I've implemented some pre-defined shortcuts, so that in general, `($= ($some-operator ...) x)`
-will result in one constraint, not multiple.
 
 ## Finding solutions
 
