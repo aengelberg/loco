@@ -300,9 +300,11 @@ Shortly after announcing CloCoP, I discovered the Choco library. Choco has a cou
 
 Alex Engelberg is the author and maintainer of the Loco library.  Issues, examples, and pull requests are welcome.
 
-Special thanks to the Seattle Clojure group (Seajure), who listened as I explained an early iteration of Loco and nudged me in the direction of being fully declarative.
+Thanks to [Andrea Richiardi](https://github.com/arichiardi) for contributing Loco solutions for sample Constraint Programming problems. His examples can be can be found in the test directory.
 
-Also, special thanks to Charles Prud'homme, a maintainer of Choco, for permission to create a Clojure spin-off, as well as additional guidance with some Choco features.
+Also, thanks to the Seattle Clojure group (Seajure), who listened as I explained an early iteration of Loco and nudged me in the direction of being fully declarative.
+
+Special thanks to Charles Prud'homme, a maintainer of Choco, for permission to create a Clojure spin-off, as well as additional guidance with some Choco features.
 
 ## License
 
