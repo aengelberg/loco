@@ -277,39 +277,39 @@ There are a couple ways to find the solution(s) to a Loco model you have constru
 The first way is to call `solution`. It returns a solution map, whose keys are variable names, and whose values are the values of the variables.
 
 ```clojure
-(solution [($in :x 1 5)
-           ($in :y 1 5)
-           ($= :x ($+ :y 4))])
-=> {:x 5, :y 1}
+=> (solution [($in :x 1 5)
+              ($in :y 1 5)
+              ($= :x ($+ :y 4))])
+{:x 5, :y 1}
 ```
 
 You can also call `solution` with keyword arguments to specify the optimization of a given variable
 (or arithmetic expression).
 
 ```clojure
-(solution [($in :x 1 5)
-           ($in :y 1 5)]
-          :maximize ($- :x :y))
-=> {:x 5, :y 1}
+=> (solution [($in :x 1 5)
+              ($in :y 1 5)]
+             :maximize ($- :x :y))
+{:x 5, :y 1}
 ```
 
 You can get a lazy sequence of ALL of the solutions by calling `solutions`:
 
 ```clojure
-(solutions [($in :x 1 5)
-            ($in :y 1 5)
-            ($= :x :y)])
-=> ({:x 1, :y 1}, {:x 2, :y 2}, {:x 3, :y 3}, {:x 4, :y 4}, {:x 5, :y 5})
+=> (solutions [($in :x 1 5)
+               ($in :y 1 5)
+               ($= :x :y)])
+({:x 1, :y 1}, {:x 2, :y 2}, {:x 3, :y 3}, {:x 4, :y 4}, {:x 5, :y 5})
 ```
 
 You can also use the `:minimize/:maximize` keyword on `solutions`.
 This will find all of the optimal solutions, in a non-lazy sequence:
 
 ```clojure
-(solutions [($in :x -5 5)
-            ($in :y -5 5)]
-           :minimize ($* :x :y))
-=> ({:x 5, :y -5} {:x -5, :y 5})
+=> (solutions [($in :x -5 5)
+               ($in :y -5 5)]
+              :minimize ($* :x :y))
+({:x 5, :y -5} {:x -5, :y 5})
 ```
 
 To time-out the solution early, use the `:timeout` argument. After the specified amount of milliseconds,
@@ -322,12 +322,12 @@ Note that this timeout is not a guarantee -- the timer is only checked between p
 results in a punctual termination.
 
 ```clojure
-(solution [($in :x 1 10)
-           ($in :y 1 10)
-           ($= :x :y)]
-          :maximize :x
-          :timeout 1000)   ; timeout after 1 second. (pretend this is a super hard problem that takes a few seconds)
-=> {:x 7, :y 7}
+=> (solution [($in :x 1 10)
+              ($in :y 1 10)
+              ($= :x :y)]
+             :maximize :x
+             :timeout 1000)   ; timeout after 1 second. (pretend this is a super hard problem that takes a few seconds)
+{:x 7, :y 7}
 ```
 
 ## About Loco
