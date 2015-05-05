@@ -12,10 +12,12 @@ Constraint Programming is about solving problems that can be expressed in terms 
 
 Perhaps the simplest way to answer this question in Clojure is:
 
-    (for [x (range 1 7),
-          y (range 3 8)
-          :when (= (+ x y) 10)]
-      {:x x, :y y})
+```clojure
+(for [x (range 1 7),
+      y (range 3 8)
+      :when (= (+ x y) 10)]
+  {:x x, :y y})
+```
 
 This approach tests every possible combination of x and y.  For this simple example, this approach suffices, but as the number of variables and constraints grows, testing every combination is typically not realistic.
 
@@ -29,33 +31,39 @@ Loco aims to provide a pleasing, concise, declarative way to express constraint 
 
 In CP lingo, a problem specification is often called a *model*.  Here is a model for our toy example:
 
-    (use 'loco.core 'loco.constraints)
+```clojure
+(use 'loco.core 'loco.constraints)
 
-    (def model
-      [($in :x 1 6)  ; x is in the domain ranging from 1 to 6, inclusive
-       ($in :y 3 7)  ; y is in the domain ranging from 3 to 7, inclusive
-       ($= ($+ :x :y) 10)])
+(def model
+  [($in :x 1 6)  ; x is in the domain ranging from 1 to 6, inclusive
+   ($in :y 3 7)  ; y is in the domain ranging from 3 to 7, inclusive
+   ($= ($+ :x :y) 10)])
+```
 
 To find all the solutions:
 
-    => (solutions model)
-    ({:y 7, :x 3} {:y 6, :x 4} {:y 5, :x 5} {:y 4, :x 6})
+```clojure
+=> (solutions model)
+({:y 7, :x 3} {:y 6, :x 4} {:y 5, :x 5} {:y 4, :x 6})
+```
 
 Notice that the model is nearly as compact as the corresponding `for` expression.  However, the model is fully declarative.  It is built with Loco functions, but ultimately, the model is simply a Clojure data structure describing all the variables and constraints.
 
-    => model
-    [{:domain {:min 1, :max 6},
-      :type :int-domain,
-      :can-init-var true,
-      :name :x}
-     {:domain {:min 3, :max 7},
-      :type :int-domain,
-      :can-init-var true,
-      :name :y}
-     {:eq "=",
-      :arg2 10,
-      :type :arithm-eq,
-      :arg1 {:type :+, :args (:x :y), :id id1787, :can-optimize-eq #{}}}]
+```clojure
+=> model
+[{:domain {:min 1, :max 6},
+  :type :int-domain,
+  :can-init-var true,
+  :name :x}
+ {:domain {:min 3, :max 7},
+  :type :int-domain,
+  :can-init-var true,
+  :name :y}
+ {:eq "=",
+  :arg2 10,
+  :type :arithm-eq,
+  :arg1 {:type :+, :args (:x :y), :id id1787, :can-optimize-eq #{}}}]
+```
 
 This is the Clojure philosophy of how to create a library: figure out how your problem can be expressed as data, write functions to build that kind of data, and then write functions to consume that kind of data.  This design principle has important consequences.
 
@@ -75,56 +83,74 @@ A variable must have a name.  There are two kinds of names:
 
 If a name starts with an underscore character, it will be omitted from the final solution map.
 
-    => (solution [($int :x 0 1)
-                  ($int :_y 0 1)
-                  ($= ($+ :x :_y) 2)])
-    {:x 1}
+```clojure
+=> (solution [($int :x 0 1)
+              ($int :_y 0 1)
+              ($= ($+ :x :_y) 2)])
+{:x 1}
+```
     
 ### Variables
 
 Every variable must be declared at least once in the model, for example,
 
-    ($in :x 1 10)
+```clojure
+($in :x 1 10)
+```
 
 states that `:x` is an integer ranging from 1 to 10. You can also explicitly state the values of a domain, like so:
 
-    ($in :x [1 2 3 4 5 6 7 8 9 10])
+```clojure
+($in :x [1 2 3 4 5 6 7 8 9 10])
+```
 
 Creating vars with the former method will be equivalent to the latter method in the long run (as the values are stored explicitly either way). The latter method is less concise but more flexible.
 
 It is common in Constraint Programming to express boolean variables as numbers that can be either 0 or 1.  So to create a boolean variable b:
 
-    ($in :b 0 1)
+```clojure
+($in :b 0 1)
+```
 
 Typically, variables are represented internally by the solving engine as a set of all the remaining  values which are valid.  However, the engine supports another representation which tracks only the minimal and maximal value that the variable can take.  To enable this option, use the `:bounded` keyword:
 
-    ($in :x 1 10 :bounded)
+```clojure
+($in :x 1 10 :bounded)
+```
 
 Generally speaking, this option is more space efficient at the expense of time.
 
 `$in` can also be used as a constraint within nested expressions, for example,
 
-    ($or ($in :x 1 5) ($in :x 6 10))
+```clojure
+($or ($in :x 1 5) ($in :x 6 10))
+```
 
 is a valid constraint.  However, it is still essential that somewhere in the model, the variable must be declared unnested, at the "top level".
 
 So this by itself is not a valid model, because `:x` is not declared:
 
-    [($or ($in :x 1 5) ($in :x 6 10))]
+```clojure
+[($or ($in :x 1 5) ($in :x 6 10))]
+```
 
 but this is:
 
-    [($in :x 1 10)
-     ($or ($in :x 1 5) ($in :x 6 10))]
+```clojure
+[($in :x 1 10)
+ ($or ($in :x 1 5) ($in :x 6 10))]
+```
 
 ### Expression Nesting
 
 Imagine you'd like to specify `A + (B * C) = D` in your CP model. In Choco (the Java library),
 the code looks something like this:
 
-    IntVar x = VariableFactory.integer("x", 1, 10, solver);
-    solver.post(ICF.times(b, c, x));
-    solver.post(ICF.arithm(a, "+", x, "=", d));
+```java
+IntVar x = VariableFactory.integer("x", 1, 10, solver);
+solver.post(ICF.times(b, c, x));
+solver.post(ICF.arithm(a, "+", x, "=", d));
+```
 
 This is surprisingly inelegant for a relatively simple expression.
 Even when looking past the inherent Java messiness, there's a deeper problem, which
@@ -133,7 +159,9 @@ This way of programming forces me to think from the inside out.
 
 In Loco, that expression can be written in one line as it should:
 
-    ($= ($+ :a ($* :b :c)) :d)
+```clojure
+($= ($+ :a ($* :b :c)) :d)
+```
 
 This is far closer to the mathematical expression we started with. When this
 constraint is consumed by a Loco function such as `solution`, intermediate variables are
@@ -142,11 +170,13 @@ automatically created behind the scenes. Those variables have auto-generated nam
 
 For instance, given the following model:
 
-    [($in :a 1 10)
-     ($in :b 4 8)
-     ($in :c 1 5)
-     ($in :d 3 10)
-     ($= ($+ :a ($* :b :c)) :d)]
+```clojure
+[($in :a 1 10)
+ ($in :b 4 8)
+ ($in :c 1 5)
+ ($in :d 3 10)
+ ($= ($+ :a ($* :b :c)) :d)]
+```
 
 Behind the scenes, Loco is feeding Choco the following pseudo-program:
 
@@ -246,33 +276,41 @@ There are a couple ways to find the solution(s) to a Loco model you have constru
 
 The first way is to call `solution`. It returns a solution map, whose keys are variable names, and whose values are the values of the variables.
 
-    (solution [($in :x 1 5)
-               ($in :y 1 5)
-               ($= :x ($+ :y 4))])
-    => {:x 5, :y 1}
+```clojure
+(solution [($in :x 1 5)
+           ($in :y 1 5)
+           ($= :x ($+ :y 4))])
+=> {:x 5, :y 1}
+```
 
 You can also call `solution` with keyword arguments to specify the optimization of a given variable
 (or arithmetic expression).
 
-    (solution [($in :x 1 5)
-               ($in :y 1 5)]
-              :maximize ($- :x :y))
-    => {:x 5, :y 1}
+```clojure
+(solution [($in :x 1 5)
+           ($in :y 1 5)]
+          :maximize ($- :x :y))
+=> {:x 5, :y 1}
+```
 
 You can get a lazy sequence of ALL of the solutions by calling `solutions`:
 
-    (solutions [($in :x 1 5)
-                ($in :y 1 5)
-                ($= :x :y)])
-    => ({:x 1, :y 1}, {:x 2, :y 2}, {:x 3, :y 3}, {:x 4, :y 4}, {:x 5, :y 5})
+```clojure
+(solutions [($in :x 1 5)
+            ($in :y 1 5)
+            ($= :x :y)])
+=> ({:x 1, :y 1}, {:x 2, :y 2}, {:x 3, :y 3}, {:x 4, :y 4}, {:x 5, :y 5})
+```
 
 You can also use the `:minimize/:maximize` keyword on `solutions`.
 This will find all of the optimal solutions, in a non-lazy sequence:
 
-    (solutions [($in :x -5 5)
-                ($in :y -5 5)]
-               :minimize ($* :x :y))
-    => ({:x 5, :y -5} {:x -5, :y 5})
+```clojure
+(solutions [($in :x -5 5)
+            ($in :y -5 5)]
+           :minimize ($* :x :y))
+=> ({:x 5, :y -5} {:x -5, :y 5})
+```
 
 To time-out the solution early, use the `:timeout` argument. After the specified amount of milliseconds,
 - if calling `solution`, returns `nil`;
@@ -283,12 +321,14 @@ To time-out the solution early, use the `:timeout` argument. After the specified
 Note that this timeout is not a guarantee -- the timer is only checked between propagations, which usually but not always
 results in a punctual termination.
 
-    (solution [($in :x 1 10)
-               ($in :y 1 10)
-               ($= :x :y)]
-              :maximize :x
-              :timeout 1000)   ; timeout after 1 second. (pretend this is a super hard problem that takes a few seconds)
-    => {:x 7, :y 7}
+```clojure
+(solution [($in :x 1 10)
+           ($in :y 1 10)
+           ($= :x :y)]
+          :maximize :x
+          :timeout 1000)   ; timeout after 1 second. (pretend this is a super hard problem that takes a few seconds)
+=> {:x 7, :y 7}
+```
 
 ## About Loco
 
