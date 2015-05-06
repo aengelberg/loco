@@ -1,4 +1,4 @@
-(defproject loco "0.3.0-SNAPSHOT"
+(defproject loco "0.3.0"
   :description "Constraint Programming for Clojure"
   :url "http://github.com/aengelberg/loco"
   :license {:name "Eclipse Public License"
