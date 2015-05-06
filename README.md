@@ -1,5 +1,7 @@
 # loco
 
+![CircleCI build status](https://circleci.com/gh/aengelberg/loco.png?circle-token=056c1eb8765d2e4e2cdfa0a0c143eee009ef172f)
+
 Loco is a *Constraint Programming* library for Clojure.  Loco provides a fully *declarative, functional interface* to the Java library Choco.
 
     [loco "0.3.0-SNAPSHOT"]
