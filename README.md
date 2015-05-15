@@ -86,8 +86,8 @@ A variable must have a name.  There are two kinds of names:
 If a name starts with an underscore character, it will be omitted from the final solution map.
 
 ```clojure
-=> (solution [($int :x 0 1)
-              ($int :_y 0 1)
+=> (solution [($in :x 0 1)
+              ($in :_y 0 1)
               ($= ($+ :x :_y) 2)])
 {:x 1}
 ```
