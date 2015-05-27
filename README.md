@@ -81,7 +81,7 @@ A variable must have a name.  There are two kinds of names:
 
 1. Keywords.  For example, `:x` and `:y` are valid variable names.
 2. Vectors beginning with a keyword.  For example, `[:x 1]` and `[:y "max"]` are valid variable names.  Conceptually, it helps to think of these as subscripted variables, such as
-<a href="http://www.codecogs.com/eqnedit.php?latex=\inline&space;$x_1$" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\inline&space;$x_1$" title="$x_1$" /></a> and <a href="http://www.codecogs.com/eqnedit.php?latex=\inline&space;$y_\textrm{max}$" target="_blank"><img src="http://latex.codecogs.com/gif.latex?\inline&space;$y_\textrm{max}$" title="$y_\textrm{max}$" /></a>.
+<a href="http://www.codecogs.com/eqnedit.php?latex=%5Cinline&space;$x_1$" target="_blank"><img src="http://latex.codecogs.com/gif.latex?%5Cinline&space;$x_1$" title="$x_1$" /></a> and <a href="http://www.codecogs.com/eqnedit.php?latex=%5Cinline&space;$y_%5Ctextrm{max}$" target="_blank"><img src="http://latex.codecogs.com/gif.latex?%5Cinline&space;$y_%5Ctextrm{max}$" title="$y_%5Ctextrm{max}$" /></a>.
 
 If a name starts with an underscore character, it will be omitted from the final solution map.
 
