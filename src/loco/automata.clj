@@ -32,7 +32,7 @@
     (.setInitialState f (state->int-state initial-state))
     (doseq [state final-states]
       (check-state all-states state)
-      (.setFinal f (state->int-state state)))
+      (.setFinal f ^int (state->int-state state)))
     f))
 
 (defn map->automaton
@@ -51,4 +51,32 @@
     (make-automaton all-states transitions initial-state final-states)))
 
 (defn string->automaton
-  "Takes a regular expression")
+  "Takes a regular expression that parses a sequence of integers instead of characters.
+  It has the following syntax:
+  - Any digit (0-9) parses that number.
+  - An integer within angle-brackets (<12>) parses that integer.
+  (careful, \"12\" without angle brackets parses 1, then 2.)
+  - Special characters like ()[]|+*? work as expected.
+  - Using letters, whitespace, or other non-digit non-special characters has unsupported,
+  unintuitive behavior, and it is recommended that you avoid them."
+  [^String s]
+  (FiniteAutomaton. s))
+
+(defn union
+  "Takes two automata A1 and A2, and returns a new automaton that
+  accepts an input iff A1 or A2 would accept it."
+  [^FiniteAutomaton A1 ^FiniteAutomaton A2]
+  (.union A1 A2))
+
+(defn intersection
+  "Takes two automata A1 and A2, and returns a new automaton that
+  accepts an input iff both A1 and A2 would accept it."
+  [^FiniteAutomaton A1 ^FiniteAutomaton A2]
+  (.intersection A1 A2))
+
+(defn cat
+  "Takes two automata A1 and A2, and returns a new automaton that
+  accepts an input S iff there exists two strings S1 and S2, such that
+  a1 accepts S1, a2 accepts S2, and S1 + S2 = S."
+  [^FiniteAutomaton A1 ^FiniteAutomaton A2]
+  (.concatenation A1 A2))
