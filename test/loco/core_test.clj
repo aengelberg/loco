@@ -1,7 +1,8 @@
 (ns loco.core-test
   (:use clojure.test
         loco.core
-        loco.constraints))
+        loco.constraints)
+  (:require [loco.automata :as a]))
 
 (defmacro test-constraint-model
   ([docstring model solution-maps]
@@ -174,7 +175,7 @@
     ($= ($nth [:a :b :c :d :e] :x 1) :x)]
    [{:a 5 :b 5 :c 3 :d 5 :e 5 :x 3}]))
 
-(deftest automaton-test
+(deftest deprecated-regex-test
   (let [regex "(1|2)3*(4|5)"]
     (-> (solutions
           [($in :a [1])
@@ -188,6 +189,61 @@
       count
       (= 1)
       is)))
+
+(deftest automaton-test
+  (doseq [[description automaton]
+          [["string->automaton"
+            (a/string->automaton "12*3+")]
+           ["map->automaton"
+            (a/map->automaton {:q0 {1 :q1}
+                               :q1 {2 :q1
+                                    3 :q2}
+                               :q2 {3 :q2}}
+                              :q0 #{:q2})]
+           ["make-automaton"
+            (a/make-automaton [:q0 :q1 :q2]
+                              [[:q0 :q1 1]
+                               [:q1 :q1 2]
+                               [:q1 :q2 3]
+                               [:q2 :q2 3]]
+                              :q0 [:q2])]
+           ["Union two automata"
+            (a/union (a/string->automaton "12?3+")
+                     (a/string->automaton "12+3+"))]
+           ["Concatenate automata"
+            (reduce a/cat
+                    [(a/string->automaton "1")
+                     (a/string->automaton "2*")
+                     (a/string->automaton "3+")])]
+           ["Intersect automata"
+            (a/intersection (a/string->automaton "12*4*3+")
+                            (a/string->automaton "12*5?3+"))]]]
+    (testing description
+      (are [x y] (= (set y) (set (solutions x)))
+        [($in :x 1 5)
+         ($in :y 1 5)
+         ($in :z 1 5)
+         ($regular automaton [:x :y :z])]
+        '({:x 1 :y 2 :z 3}
+          {:x 1 :y 3 :z 3})
+
+        [($in :x 1 5)
+         ($regular automaton [:x])]
+        ())
+      (are [x] (= '({}) (solutions [($regular automaton x)]))
+        [1 3]
+        [1 2 3]
+        [1 2 2 3]
+        [1 3 3]
+        [1 2 3 3]
+        [1 2 2 3 3])
+      (are [x] (empty? (solutions [($regular automaton x)]))
+        [1]
+        ;; [] ; doesn't work, see https://github.com/chocoteam/choco3/issues/335
+        [1 3 2]
+        [1 2]
+        [1 2 2]
+        [2 2 3 3]))))
 
 (deftest cardinality-test
   (-> (solutions

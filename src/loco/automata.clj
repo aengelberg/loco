@@ -18,7 +18,6 @@
   - A list of the final / accepting states
   Note that in Loco, all inputs to the state machine must be integers."
   [all-states transitions initial-state final-states]
-  (prn all-states transitions initial-state final-states)
   (let [f (FiniteAutomaton.)
         all-states (set all-states)
         state->int-state (zipmap all-states (repeatedly #(.addState f)))]
@@ -79,4 +78,4 @@
   accepts an input S iff there exists two strings S1 and S2, such that
   a1 accepts S1, a2 accepts S2, and S1 + S2 = S."
   [^FiniteAutomaton A1 ^FiniteAutomaton A2]
-  (.concatenation A1 A2))
+  (.concatenate A1 A2))

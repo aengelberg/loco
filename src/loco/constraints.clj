@@ -1,7 +1,8 @@
 (ns loco.constraints
   (:require [loco.core :as core :refer [->choco
                                         ->choco*
-                                        *solver*]])
+                                        *solver*]]
+            loco.automata)
   (:import (org.chocosolver.solver.constraints Arithmetic
                                                ICF
                                                LCF
@@ -600,21 +601,25 @@ Hint: make the offset 1 when using a 1-based list."
     (constrain! (ICF/element new-var (into-array IntVar vars) index offset))
     new-var))
 
+(defn $regular
+  "Takes a Choco automaton object constructed by the loco.automata
+  namespace, and constrains that a list of variables represents an
+  input string accepted by the automaton."
+  [^FiniteAutomaton automaton list-of-vars]
+  {:type :regular
+   :list-of-vars list-of-vars
+   :automaton automaton})
+(defmethod ->choco* :regular
+  [{:keys [list-of-vars automaton]}]
+  (let [list-of-vars (map ->choco-int-var list-of-vars)]
+    (ICF/regular (into-array IntVar list-of-vars) automaton)))
+
 (defn $regex
-  "Given a regex and a list of variables, constrains that said variables in sequence must satisfy the regex."
+  "Deprecated: use $regular
+  Given a regex and a list of variables, constrains that said variables in sequence must satisfy the regex."
   [regex list-of-vars]
-  {:type :regex
-   :vars list-of-vars
-   :auto {:type :automaton :str regex :id (gensym (hash regex))}})
-(defmethod ->choco* :automaton
-  [{regex :str}]
-  (FiniteAutomaton. regex))
-(defmethod ->choco* :regex
-  [{list-of-vars :vars auto :auto}]
-  (let [list-of-vars (map ->choco-int-var list-of-vars)
-        auto (->choco auto)]
-    (ICF/regular (into-array IntVar list-of-vars)
-                 auto)))
+  ($regular (loco.automata/string->automaton regex)
+            list-of-vars))
 
 (defn $cardinality
   "Takes a list of variables, and a frequency map (from numbers to frequencies), constrains
