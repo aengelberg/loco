@@ -418,11 +418,31 @@ expressions.
 - Special characters like `()[]|+*?` work as expected, as in Java
   regular expressions.
 - In addition to the familiar operations, `&` behaves as an infix
-  "and" operator (like the opposite of `|`). Example: `a.c&ab.` parses
-  `"abc"`.
+  "and" operator (like the opposite of `|`). Example: `1.3&12.` is
+  equivalent to `123`.
 - Any other character (including letters and whitespace)
   [behaves unintuitively](https://github.com/chocoteam/choco3/issues/318)
   and should be avoided.
+
+Choco also provides some utilities to build automata from other
+automata, which Loco provides like so:
+
+```clojure
+(a/cat (a/string->automaton "12")
+       (a/string->automaton "34"))
+;; returns the equivalent of
+(a/string->automaton "1234")
+
+(a/union (a/string->automaton "12+")
+         (a/string->automaton "2+"))
+;; returns the equivalent of
+(a/string->automaton "1?2+")
+
+(a/intersection (a/string->automaton "12?")
+                (a/string->automaton "12+"))
+;; returns the equivalent of
+(a/string->automaton "12")
+```
 
 ## About Loco
 
