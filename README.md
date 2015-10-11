@@ -255,22 +255,7 @@ that ensures that for each k,v pair in the map, k appears v times in the list of
 Example: `($cardinality [:a :b :c :d] {1 :how-many-ones, 2 :how-many-twos})` could yield a solution `{:a 1, :b 1, :c 2, :d 3, :how-many-ones 2, :how-many-twos 1}`.
 Also takes an optional keyword argument, `:closed true` (default false), which ensures that the list ONLY contains keys that are in the frequency map.
 - `$knapsack` - takes a list of weights `w_1, w_2, ...`, a list of values `v_1, v_2, ...`, a list of variables `O_1, O_2, ...`, and variables `W_total` and `V_total`. Constrains that `sum(O_i * w_i) = W_total`, and that `sum(O_i * v_i) = V_total`.
-- `$regex` - given a rudimentary regular expression and a list of variables, constrains that said variables in sequence
-must follow the regex. Values (non-terminals) in the regex are represented as characters, though are reflected in the int-vars
-as the ASCII values. The exception is that digit characters are reflected as the digits themselves.
-Example: `($regex "a5" [:x :y]) => {:x 97, :y 5}`. Here is a more technical list of the syntax of the regular expression.
- - any character - the ASCII value of the character
- - `0` to `9` - the number itself
- - `(...)` - grouping
- - `a|b` - alternation / or
- - `a*` - zero or more
- - `a+` - one or more
- - `a?` - zero or one
- - `[abc]` - one of several characters
- - `[a-z]` - character range
- - `\( \[ \* etc.` - escape special character
-
-Whitespace characters are also treated as unicode numbers; they are not ignored by the parser.
+- `$regular` - constrains an automaton to a list of variables. See [Automata](#automata) section below.
 
 ## Finding solutions
 
@@ -331,6 +316,113 @@ results in a punctual termination.
              :timeout 1000)   ; timeout after 1 second. (pretend this is a super hard problem that takes a few seconds)
 {:x 7, :y 7}
 ```
+
+### Automata
+
+Many constraint engines (including Choco) include a special
+general-purpose constraint, which uses a
+[deterministic finite state machine](https://en.wikipedia.org/wiki/Deterministic_finite_automaton)
+(a.k.a. deterministic finite automaton) to constrain a sequence of
+integer variables.
+
+First, you must design an automaton using the `loco.automata` namespace:
+
+```clojure
+(require '[loco.automata :as a])
+
+(def my-automaton
+  (a/map->automaton ; a state machine that accepts "123" or "124"
+   {:q0 {1 :q1}
+    :q1 {2 :q2}
+    :q2 {3 :q3
+         4 :q4}}    ; map of state transitions
+   :q0              ; the start state
+   #{:q3 :q4}))     ; the accepting state
+
+my-automaton
+;; =>
+;; #<FiniteAutomaton initial state: 0
+;; state 0 [reject]:
+;;   \u0001 -> 3
+;; state 1 [reject]:
+;;   \u0004 -> 2
+;;   \u0003 -> 4
+;; state 2 [accept]:
+;; state 3 [reject]:
+;;   \u0002 -> 1
+;; state 4 [accept]:
+;; >
+```
+
+Then, use the `$regular` constraint to apply an automaton to a list of
+variables.
+
+```clojure
+(solutions [($in :x 1 5)
+            ($in :y 1 5)
+            ($in :z 1 5)
+            ($regular my-automaton [:x :y :z])])
+;; => ({:x 1, :y 2, :z 3}
+;;     {:x 1, :y 2, :z 4})
+```
+
+Loco will return all possible combinations of variables that are
+accepted as a valid input to the automaton.
+
+A cool set of proofs from automata theory demonstrates that any
+regular expression can be converted to some equivalent deterministic
+finite automaton.  Imagine if you could apply any regular expression
+as a constraint!  Choco lets you do just that, and it's available in
+Loco via `loco.automata/string->automaton`.
+
+```clojure
+(def my-automaton
+  "Parses any amount of \"123\"s in sequence, followed by a single 4 or 5"
+  (a/string->automaton
+   "(123)+(4|5)"))
+
+my-automaton
+;; =>
+;; #<FiniteAutomaton initial state: 1
+;; state 0 [accept]:
+;; state 1 [reject]:
+;;   \u0001 -> 3
+;; state 2 [reject]:
+;;   \u0001 -> 3
+;;   \u0004-\u0005 -> 0
+;; state 3 [reject]:
+;;   \u0002 -> 4
+;; state 4 [reject]:
+;;   \u0003 -> 2
+;; >
+
+(solutions (cons ($regular my-automaton [:a :b :c :d :e :f :g])
+                 (for [v [:a :b :c :d :e :f :g]]
+                   ($in v 1 5))))
+;; => ({:a 1, :b 2, :c 3, :d 1, :e 2, :f 3, :g 4}
+;;     {:a 1, :b 2, :c 3, :d 1, :e 2, :f 3, :g 5})
+
+```
+
+Choco's automaton utilities (which Loco thinly wraps) leverage the
+[dk.brics.automaton](http://www.brics.dk/automaton/) Java library,
+which contains sophisticated algorithms for converting regular
+expressions into compact state machines.
+
+Here is a run-through of the syntax accepted by these special regular
+expressions.
+
+- Any digit (0-9) parses that number.
+- An integer within angle-brackets (e.g. `<12>`) parses that integer
+  (but `12` without angle brackets would parse 1, then 2).
+- Special characters like `()[]|+*?` work as expected, as in Java
+  regular expressions.
+- In addition to the familiar operations, `&` behaves as an infix
+  "and" operator (like the opposite of `|`). Example: `a.c&ab.` parses
+  `"abc"`.
+- Any other character (including letters and whitespace)
+  [behaves unintuitively](https://github.com/chocoteam/choco3/issues/318)
+  and should be avoided.
 
 ## About Loco
 
