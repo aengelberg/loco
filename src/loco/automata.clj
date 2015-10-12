@@ -1,4 +1,5 @@
 (ns loco.automata
+  (:refer-clojure :exclude [cat])
   (:import (org.chocosolver.solver.constraints.nary.automata.FA
             FiniteAutomaton)))
 
