@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+- added namespace `loco.automata` for creating FiniteAutomaton objects
+- replaced `$regex` with more general-purpose `$regular`
+
 ## 0.3.0
 - upgraded Choco from 3.1.0 to 3.3.0; resolved breaking changes but no new features
 - now depends on Maven Central artifact, which should be more reliable
