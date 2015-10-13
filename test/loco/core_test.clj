@@ -217,7 +217,19 @@
                      (a/string->automaton "3+")])]
            ["Intersect automata"
             (a/intersection (a/string->automaton "12*4*3+")
-                            (a/string->automaton "12*5?3+"))]]]
+                            (a/string->automaton "12*5?3+"))]
+           ["Minimized automaton via Hopcroft"
+            (-> (a/union (a/string->automaton "12?3+")
+                         (a/string->automaton "12+3+"))
+                (a/minimize!))]
+           ["Minimized automaton via Brzozowski"
+            (-> (a/union (a/string->automaton "12?3+")
+                         (a/string->automaton "12+3+"))
+                (a/minimize! :brzozowski))]
+           ["Minimized automaton via Huffman"
+            (-> (a/union (a/string->automaton "12?3+")
+                         (a/string->automaton "12+3+"))
+                (a/minimize! :huffman))]]]
     (testing description
       (are [x y] (= (set y) (set (solutions x)))
         [($in :x 1 5)

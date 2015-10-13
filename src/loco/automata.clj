@@ -1,7 +1,9 @@
 (ns loco.automata
   (:refer-clojure :exclude [cat])
   (:import (org.chocosolver.solver.constraints.nary.automata.FA
-            FiniteAutomaton)))
+            FiniteAutomaton)
+           (dk.brics.automaton
+            Automaton)))
 
 (defn check-state
   [all-states state]
@@ -80,3 +82,23 @@
   a1 accepts S1, a2 accepts S2, and S1 + S2 = S."
   [^FiniteAutomaton A1 ^FiniteAutomaton A2]
   (.concatenate A1 A2))
+
+(defn minimize!
+  "Mutates an automaton to have the minimal number of states necessary.
+  Optionally specify what algorithm to use:
+  - :hopcroft (O(n log n) algorithm) (default)
+  - :huffman (O(n^2) algorithm)
+  - :brzozowski (O(2^n) algorithm)
+  If the input automaton is non-deterministic, minimize! will first
+  have to \"determinize\" it (i.e. ensure only one transition per input
+  character per state) which is an exponential-complexity operation."
+  ([a]
+   (minimize! a :hopcroft))
+  ([^FiniteAutomaton a algorithm]
+   (Automaton/setMinimization
+    (case algorithm
+      :hopcroft Automaton/MINIMIZE_HOPCROFT
+      :brzozowski Automaton/MINIMIZE_BRZOZOWSKI
+      :huffman Automaton/MINIMIZE_HUFFMAN))
+   (.minimize a)
+   a))
