@@ -242,20 +242,26 @@
         [($in :x 1 5)
          ($regular automaton [:x])]
         ())
-      (are [x] (= '({}) (solutions [($regular automaton x)]))
-        [1 3]
-        [1 2 3]
-        [1 2 2 3]
-        [1 3 3]
-        [1 2 3 3]
-        [1 2 2 3 3])
-      (are [x] (empty? (solutions [($regular automaton x)]))
-        [1]
-        ;; [] ; doesn't work, see https://github.com/chocoteam/choco3/issues/335
-        [1 3 2]
-        [1 2]
-        [1 2 2]
-        [2 2 3 3]))))
+      (doseq [input [[1 3]
+                     [1 2 2 3]
+                     [1 3 3]
+                     [1 2 3 3]
+                     [1 2 2 3 3]]]
+        (is (= '({}) (solutions [($regular automaton input)]))
+            (str "Input " input " satisfies automaton constraint"))
+        (is (= true (a/run automaton input))
+            (str "Input " input " satisfies automaton")))
+      (doseq [input [[1]
+                     ;; [] ; doesn't work, see https://github.com/chocoteam/choco3/issues/335
+                     [1 2 3 4]
+                     [1 3 2]
+                     [1 2]
+                     [1 2 2]
+                     [2 2 3 3]]]
+        (is (empty? (solutions [($regular automaton input)]))
+            (str "Input " input " doesn't satisfy automaton constraint"))
+        (is (= false (a/run automaton input))
+            (str "Input " input " doesn't satisfy automaton"))))))
 
 (deftest cardinality-test
   (-> (solutions

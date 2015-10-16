@@ -102,3 +102,13 @@
       :huffman Automaton/MINIMIZE_HUFFMAN))
    (.minimize a)
    a))
+
+(defn run
+  "Good for testing state machines you've built before passing them to
+  the constraint solver. Runs the automaton on an \"input\" of a
+  collection of integers, and returns a boolean (true if the state
+  machine parses the input and ends at a final state)."
+  [^FiniteAutomaton a input]
+  (assert (sequential? input)
+          "Input to automaton must be a sequential collection")
+  (.run a (int-array input)))
