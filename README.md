@@ -454,7 +454,7 @@ Shortly after announcing CloCoP, I discovered the Choco library. Choco has a cou
 
 Alex Engelberg is the author and maintainer of the Loco library.  Issues, examples, and pull requests are welcome.
 
-Thanks to [Andrea Richiardi](https://github.com/arichiardi) for contributing Loco solutions for sample Constraint Programming problems. His examples can be can be found in the test directory.
+Thanks to [Andrea Richiardi](https://github.com/arichiardi) for contributing Loco solutions for sample Constraint Programming problems. His examples can be found in the test directory.
 
 Also, thanks to the Seattle Clojure group (Seajure), who listened as I explained an early iteration of Loco and nudged me in the direction of being fully declarative.
 
