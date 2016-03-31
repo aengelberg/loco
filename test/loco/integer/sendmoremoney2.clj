@@ -27,8 +27,7 @@
                 M  O  R  E =
              ---------------
              M  O  N  E  Y  "
-  (concat letters
-          (initialize-digits letters)
+  (concat (initialize-digits letters)
           carries
           [($distinct letters)
            ($!= :S 0)

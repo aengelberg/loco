@@ -14,8 +14,7 @@
   [:S :E :N :D :M :O :R :Y])
 
 (def smm-model
-  (concat letters
-          (initialize-digits letters)
+  (concat (initialize-digits letters)
           [($distinct letters)
            ($> :S 0)
            ($> :M 0)
