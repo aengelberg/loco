@@ -152,9 +152,6 @@ and returns a list of variable declarations"
               :let [i (->choco i)]]
         (when (instance? Constraint i)
           (constrain! i)))
-      (let [vars (vals @(:my-vars s))
-            strategy (ISF/minDom_LB (into-array IntVar vars))]
-        (.set (:csolver s) (into-array AbstractStrategy [strategy])))
       s)))
 
 (defn- feasible?
@@ -196,6 +193,14 @@ and returns a list of variable declarations"
   (when (solve! args)
     (return-next-solution)))
 
+(defn- eval-and-install-strategy!
+  "Takes a strategy (or nil) constructed by loco.strategy, then installs it into *solver*."
+  [strategy-data]
+  (when strategy-data
+    (let [strategy-obj (->choco strategy-data)
+          ^Solver csolver (:csolver *solver*)]
+      (.set csolver (into-array AbstractStrategy [strategy-obj])))))
+
 (defn solution
   "Solves the problem using the specified constraints and returns a map from variable names to their values (or nil if there is no solution).
 Keyword arguments:
@@ -207,6 +212,7 @@ Note: returned solution maps have the metadata {:loco/solution <n>} denoting tha
   [problem & args]
   (binding [*solver* (problem->solver problem)]
     (let [args (apply hash-map args)]
+      (eval-and-install-strategy! (:strategy args))
       (solution* args))))
 
 (defn solutions
@@ -225,6 +231,8 @@ Keyword arguments:
         args (dissoc args :timeout :maximize :minimize)]
     (when timeout
       (SMF/limitTime csolver timeout))
+    (binding [*solver* solver]
+      (eval-and-install-strategy! (:strategy args)))
     (cond
       maximize (binding [*solver* solver]
                  (do (.findAllOptimalSolutions csolver ResolutionPolicy/MAXIMIZE
