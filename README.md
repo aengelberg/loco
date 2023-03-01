@@ -4,78 +4,66 @@
 
 ![CircleCI build status](https://circleci.com/gh/aengelberg/loco.png?circle-token=056c1eb8765d2e4e2cdfa0a0c143eee009ef172f)
 
-Loco is a *Constraint Programming* library for Clojure.  Loco provides a fully *declarative, functional interface* to the Java library Choco.
+Loco is a Clojure interface to the [Choco](https://choco-solver.org) constriant programming solver.
 
     [loco "0.3.1"]
 
 Loco requires JDK 8.
 
-## What is Constraint Programming?
-
-Constraint Programming is about solving problems that can be expressed in terms of *integer variables* and *constraints* on those variables.  For example, consider a problem in which variable `x` is an integer ranging from 1 to 6 and `y` is an integer ranging from 3 to 7.  We also know the constraint that `x+y=10`.  What are all the possible values for x and y?
-
-Perhaps the simplest way to answer this question in Clojure is:
-
-```clojure
-(for [x (range 1 7),
-      y (range 3 8)
-      :when (= (+ x y) 10)]
-  {:x x, :y y})
-```
-
-This approach tests every possible combination of x and y.  For this simple example, this approach suffices, but as the number of variables and constraints grows, testing every combination is typically not realistic.
-
-A Constraint Programming (CP) engine uses a very specific strategy to search for the solutions in an extremely efficient manner.  First, the engine performs a step called "constraint propagation", in which it uses all the constraints to narrow down the possiblities for each variable.  For example, in this case, it is impossible for x to be 1.  Once everything has been narrowed down as much as possible, the engine picks a variable with the smallest number of possibilities and starts taking cases.  Within each case, it repeats the process of constraint propagation and then taking further subcases if necessary.  For many problems, this process eliminates an astonishing number of cases in a way that seems almost intelligent, reaching a solution in a very short amount of time.
-
-Many CP engines are imperative in nature.  You create some mutable object that tracks the state of all the variables.  You add information about the variables and add constraints to the object.  Then, you kick off the solver.  At the end of the process, you inspect the variables to see what their final state is.
-
-### Our first Loco program
-
-Loco aims to provide a pleasing, concise, declarative way to express constraint problems.  `loco.core` exposes two main functions `solution` and `solutions`.  Each of these functions simply takes a sequence of *variable declarations* and *constraints*, in any order.
-
-In CP lingo, a problem specification is often called a *model*.  Here is a model for our toy example:
+## Quickstart
 
 ```clojure
 (use 'loco.core 'loco.constraints)
 
 (def model
-  [($in :x 1 6)  ; x is in the domain ranging from 1 to 6, inclusive
-   ($in :y 3 7)  ; y is in the domain ranging from 3 to 7, inclusive
+  [($in :x 1 6)  ; x is in the range 1 to 6, inclusive
+   ($in :y 3 7)  ; y is in the range 3 to 7, inclusive
+   ($= ($+ :x :y) 10)]) ; x + y = 10
+
+; Find one solution
+(solution model)
+; => {:y 7, :x 3}
+
+; Find all solutions
+(solutions model)
+; => ({:y 7, :x 3} {:y 6, :x 4} {:y 5, :x 5} {:y 4, :x 6})
+```
+
+## What is Constraint Programming?
+
+Constraint programming models and solves complex combinatorial problems by defining variables and constraints that must be satisfied. It relies on constraint propagation techniques, which update the domains of variables based on the constraints to reduce the search space and find a solution efficiently.
+
+Choco works on *integer variables*, supports a variety of constraints, and exposes an imperative interface to define and solve constraint problems.
+
+## Loco's API
+
+Loco aims to provide a pleasing, concise, declarative way to express constraint problems. Loco's functionality lives in two namespaces:
+
+* `loco.core` - provides the `solution` and `solutions` functions
+* `loco.constraints` - provides constraint functions that mirror Choco's supported constraints. Each function name begins with `$`, to avoid colliding with built-in arithmetic functions.
+
+Loco's solver takes a _model_, which is a collection of statements. Each statement is either a variable definition or a constraint. Before you submit a model to the solver, it's Clojure data:
+
+```clojure
+(def model
+  [($in :x 1 6)
+   ($in :y 3 7)
    ($= ($+ :x :y) 10)])
+
+model
+;; => [{:domain {:min 1, :max 6},
+;;      :type :int-domain,
+;;      :can-init-var true,
+;;      :name :x}
+;;     {:domain {:min 3, :max 7},
+;;      :type :int-domain,
+;;      :can-init-var true,
+;;      :name :y}
+;;     {:eq "=",
+;;      :arg2 10,
+;;      :type :arithm-eq,
+;;      :arg1 {:type :+, :args (:x :y), :id id1787, :can-optimize-eq #{}}}]
 ```
-
-To find all the solutions:
-
-```clojure
-=> (solutions model)
-({:y 7, :x 3} {:y 6, :x 4} {:y 5, :x 5} {:y 4, :x 6})
-```
-
-Notice that the model is nearly as compact as the corresponding `for` expression.  However, the model is fully declarative.  It is built with Loco functions, but ultimately, the model is simply a Clojure data structure describing all the variables and constraints.
-
-```clojure
-=> model
-[{:domain {:min 1, :max 6},
-  :type :int-domain,
-  :can-init-var true,
-  :name :x}
- {:domain {:min 3, :max 7},
-  :type :int-domain,
-  :can-init-var true,
-  :name :y}
- {:eq "=",
-  :arg2 10,
-  :type :arithm-eq,
-  :arg1 {:type :+, :args (:x :y), :id id1787, :can-optimize-eq #{}}}]
-```
-
-This is the Clojure philosophy of how to create a library: figure out how your problem can be expressed as data, write functions to build that kind of data, and then write functions to consume that kind of data.  This design principle has important consequences.
-
-With some CP APIs, the problem needs to be written as one monolithic query.  However, with Loco, a model is simply a sequence of declarations and constraints so, for example, we can write separate functions to produce different aspects of a model, and then concatenate them.  With some CP APIs, variables are mutated by the solving process.  But with Loco, the model is immutable -- it is easy to make speculative variations of the model and run them through the solver.
-
-All of the Loco functions to build these data structures begin with a `$`, in order to make it easier to `use` rather than `require` loco.constraints without name collision.  This is handy because so many of the functions share names with arithmetic and other core functions.
-
-## Concepts
 
 ### Names
 
